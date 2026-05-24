@@ -1,0 +1,436 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  TouchableOpacity, 
+  RefreshControl, 
+  StyleSheet, 
+  Alert,
+  ActivityIndicator,
+  TextInput
+} from 'react-native';
+import { useTheme } from '../ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { fetchActiveSessionsAPI, fetchHostsAPI, removeActiveSessionAPI, fetchVouchersAPI, fetchLeasesAPI, fetchSchedulersAPI, formatUptimeAPI } from '../api';
+
+type MonitoringTab = 'active' | 'hosts';
+
+export default function UsersScreen() {
+  const { colors, styles } = useTheme();
+  const [activeTab, setActiveTab] = useState<MonitoringTab>('active');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    try {
+      const [activeRaw, hostsRaw, usersRaw, leasesRaw, schedsRaw] = await Promise.all([
+        fetchActiveSessionsAPI().catch(() => []),
+        fetchHostsAPI().catch(() => []),
+        fetchVouchersAPI().catch(() => []),
+        fetchLeasesAPI().catch(() => []),
+        fetchSchedulersAPI().catch(() => [])
+      ]);
+
+      const active = Array.isArray(activeRaw) ? activeRaw : [];
+      const hosts = Array.isArray(hostsRaw) ? hostsRaw : [];
+      const users = Array.isArray(usersRaw) ? usersRaw : [];
+      const leases = Array.isArray(leasesRaw) ? leasesRaw : [];
+      const scheds = Array.isArray(schedsRaw) ? schedsRaw : [];
+
+      setOnlineCount(active.length);
+
+      if (activeTab === 'active') {
+        // Filter out system users
+        const systemUsers = ['admin', 'default', 'default-trial'];
+        
+        const killScheds = scheds.filter((s: any) => s.name.startsWith('kill_'));
+        const userNamesFromScheds = killScheds.map((s: any) => s.name.replace('kill_', ''));
+        const activeUserNames = active.map((a: any) => a.user);
+        
+        const allConnectedUserNames = Array.from(new Set([...userNamesFromScheds, ...activeUserNames]))
+          .filter(name => !systemUsers.includes(name));
+        
+        const enhancedActive = allConnectedUserNames.map(userName => {
+          const session = active.find((a: any) => a.user === userName);
+          const user = users.find((u: any) => u.name === userName);
+          const killSched = killScheds.find((s: any) => s.name === `kill_${userName}`);
+          
+          const isOnline = !!session;
+          
+          // Try to find MAC from session, then hosts, then leases
+          let mac = session?.['mac-address'] || '';
+          if (!mac) {
+             const host = hosts.find((h: any) => h.user === userName);
+             mac = host?.['mac-address'] || '';
+          }
+          const macLower = (mac || '').toLowerCase();
+          
+          const host = hosts.find((h: any) => (h['mac-address'] || '').toLowerCase() === macLower);
+          const lease = leases.find((l: any) => (l['mac-address'] || '').toLowerCase() === macLower);
+          
+          return {
+            '.id': session?.['.id'] || killSched?.['.id'] || userName,
+            user: userName,
+            isOnline,
+            status: isOnline ? 'Online' : 'Offline',
+            profile: user?.profile || session?.profile || 'default',
+            'session-time-left': getRemainingTime(session || {}, user, killSched),
+            uptime: formatUptimeAPI(session?.uptime || 'Offline'),
+            'bytes-out': session?.['bytes-out'] || '0',
+            address: session?.address || host?.address || 'N/A',
+            deviceName: lease?.['host-name'] || (isOnline ? 'Unknown Device' : 'Previously Connected'),
+            interface: host?.interface || 'unknown'
+          };
+        });
+        
+        // Sort: Online first, then by remaining time or name
+        enhancedActive.sort((a, b) => {
+          if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+          return a.user.localeCompare(b.user);
+        });
+
+        setData(enhancedActive);
+      } else {
+        const enhancedHosts = hosts.map((h: any) => {
+          const hostMac = (h['mac-address'] || '').toLowerCase();
+          const session = active.find((s: any) => (s['mac-address'] || '').toLowerCase() === hostMac);
+          const user = session ? users.find((u: any) => u.name === session.user) : null;
+          const lease = leases.find((l: any) => (l['mac-address'] || '').toLowerCase() === hostMac);
+          const killSched = session ? scheds.find((s: any) => s.name === `kill_${session.user}`) : null;
+          
+          return { 
+            ...h, 
+            profile: user?.profile || (session ? 'default' : null),
+            'session-time-left': session ? getRemainingTime(session, user, killSched) : null,
+            user: session?.user,
+            deviceName: lease?.['host-name'] || 'Unknown Device',
+            interface: h.interface || 'unknown'
+          };
+        });
+        setData(enhancedHosts);
+      }
+    } catch (error: any) {
+      console.error("Critical error in loadData:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(() => loadData(true), 60000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData(true);
+  };
+
+  const handleKick = (session: any) => {
+    Alert.alert(
+      "Kick User",
+      `Are you sure you want to disconnect ${session.user || 'this user'}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Kick", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeActiveSessionAPI(session['.id']);
+              loadData(true);
+            } catch (error: any) {
+              Alert.alert("Error", error.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const getRemainingTime = (session: any, user: any, killSched?: any) => {
+    let finalDateStr = '';
+    if (killSched && killSched['start-date'] && killSched['start-time']) {
+      finalDateStr = `${killSched['start-date']}T${killSched['start-time']}`;
+    } 
+    if (!finalDateStr) {
+      const comment = user?.comment || session.comment || '';
+      const expMatch = comment.match(/EXP:(\d{4}-\d{2}-\d{2})\s(\d{2}:\d{2}:\d{2})/);
+      if (expMatch) {
+        finalDateStr = `${expMatch[1]}T${expMatch[2]}`;
+      }
+    }
+    if (finalDateStr) {
+      try {
+        const expDate = new Date(finalDateStr);
+        const now = new Date();
+        const diffMs = expDate.getTime() - now.getTime();
+        if (diffMs <= 0) return 'Expired';
+        const diffSecs = Math.floor(diffMs / 1000);
+        const days = Math.floor(diffSecs / 86400);
+        const hours = Math.floor((diffSecs % 86400) / 3600);
+        const mins = Math.floor((diffSecs % 3600) / 60);
+        let res = '';
+        if (days > 0) res += `${days}d `;
+        if (hours > 0 || days > 0) res += `${hours}h `;
+        res += `${mins}m`;
+        return res;
+      } catch (e) {}
+    }
+    if (session['session-time-left'] && session['session-time-left'] !== 'Unlimited') {
+      return session['session-time-left'];
+    }
+    return 'Unlimited';
+  };
+
+  const formatMB = (bytes: string | number) => {
+    const b = typeof bytes === 'string' ? parseInt(bytes) : bytes;
+    if (isNaN(b) || b === 0) return '0 MB';
+    return Math.floor(b / (1024 * 1024)) + ' MB';
+  };
+
+  const renderActiveItem = ({ item }: { item: any }) => {
+    return (
+      <View style={styles.card}>
+        <View style={localStyles.cardHeader}>
+          <View style={localStyles.userInfo}>
+            <View style={[localStyles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="person" size={20} color={colors.primary} />
+            </View>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[localStyles.userName, { color: colors.foreground }]}>{item.user}</Text>
+                <View style={{ 
+                  backgroundColor: item.isOnline ? '#22c55e20' : '#6b728020', 
+                  paddingHorizontal: 6, 
+                  paddingVertical: 1, 
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: item.isOnline ? '#22c55e30' : '#6b728030'
+                }}>
+                  <Text style={{ color: item.isOnline ? '#22c55e' : '#9ca3af', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' }}>{item.status}</Text>
+                </View>
+              </View>
+              <Text style={[localStyles.userMeta, { color: colors.primary, fontWeight: '600' }]}>{item.deviceName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+                <Text style={[localStyles.userMeta, { color: colors.textMuted, marginTop: 0 }]}>
+                  {item.interface && item.interface !== 'unknown' ? `${item.interface} • ` : ''}{item.address}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {item.isOnline && (
+              <TouchableOpacity 
+                onPress={() => handleKick(item)}
+                style={[localStyles.kickButton, { backgroundColor: '#ef444420' }]}
+              >
+                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder, marginVertical: 8 }]} />
+
+        <View style={localStyles.statsGrid}>
+          <View style={localStyles.statItem}>
+            <Ionicons name="briefcase-outline" size={14} color={colors.textMuted} />
+            <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Profile</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.profile}</Text>
+          </View>
+          <View style={localStyles.statItem}>
+            <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+            <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Uptime</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.uptime}</Text>
+          </View>
+          <View style={localStyles.statItem}>
+            <Ionicons name="hourglass-outline" size={14} color={colors.primary} />
+            <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Remain</Text>
+            <Text style={[localStyles.statValue, { color: colors.primary }]}>{item['session-time-left']}</Text>
+          </View>
+          <View style={localStyles.statItem}>
+            <Ionicons name="cloud-download-outline" size={14} color={colors.textMuted} />
+            <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Down</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{formatMB(item['bytes-out'])}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderHostItem = ({ item }: { item: any }) => {
+    const isExpanded = expandedItems.has(item['.id']);
+    return (
+      <View style={styles.card}>
+        <View style={localStyles.cardHeader}>
+          <View style={localStyles.userInfo}>
+            <View style={[localStyles.iconContainer, { backgroundColor: (item.authorized === 'true' ? '#22c55e' : colors.textMuted) + '20' }]}>
+              <Ionicons 
+                name={item.authorized === 'true' ? "shield-checkmark" : "help-circle"} 
+                size={20} 
+                color={item.authorized === 'true' ? '#22c55e' : colors.textMuted} 
+              />
+            </View>
+            <View>
+              <Text style={[localStyles.userName, { color: colors.foreground }]}>{item.deviceName !== 'Unknown Device' ? item.deviceName : item.address}</Text>
+              <Text style={[localStyles.userMeta, { color: colors.textMuted }]}>
+                {item.authorized === 'true' ? `Authorized (${item.address})` : 'Unauthenticated'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity 
+            onPress={() => toggleExpand(item['.id'])}
+            style={[localStyles.infoButton, { backgroundColor: colors.glassBorder }]}
+          >
+            <Ionicons name={isExpanded ? "chevron-up" : "information-circle-outline"} size={18} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder }]} />
+
+        <View style={localStyles.hostDetails}>
+          {item.interface && item.interface !== 'unknown' && (
+            <View style={localStyles.hostDetailRow}>
+              <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Port</Text>
+              <Text style={[localStyles.hostValue, { color: colors.primary, fontWeight: '700' }]}>{item.interface}</Text>
+            </View>
+          )}
+          {item.profile && (
+            <View style={localStyles.hostDetailRow}>
+              <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Profile</Text>
+              <Text style={[localStyles.hostValue, { color: colors.foreground }]}>{item.profile}</Text>
+            </View>
+          )}
+          {item['session-time-left'] && (
+            <View style={localStyles.hostDetailRow}>
+              <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Remaining</Text>
+              <Text style={[localStyles.hostValue, { color: colors.primary }]}>{item['session-time-left']}</Text>
+            </View>
+          )}
+          {isExpanded && (
+            <>
+              <View style={localStyles.hostDetailRow}>
+                <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Server</Text>
+                <Text style={[localStyles.hostValue, { color: colors.foreground }]}>{item.server || 'Any'}</Text>
+              </View>
+              {item.comment && (
+                <View style={localStyles.hostDetailRow}>
+                  <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Comment</Text>
+                  <Text style={[localStyles.hostValue, { color: colors.textMuted }]}>{item.comment}</Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={localStyles.container}>
+      <View style={{ height: 10 }} />
+      <View style={[localStyles.tabBar, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+        <TouchableOpacity 
+          onPress={() => setActiveTab('active')}
+          style={[localStyles.tab, activeTab === 'active' && { backgroundColor: colors.primary }]}
+        >
+          <Ionicons name="flash" size={16} color={activeTab === 'active' ? '#fff' : colors.textMuted} />
+          <Text style={[localStyles.tabText, { color: activeTab === 'active' ? '#fff' : colors.textMuted }]}>Active Sessions</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          onPress={() => setActiveTab('hosts')}
+          style={[localStyles.tab, activeTab === 'hosts' && { backgroundColor: colors.primary }]}
+        >
+          <Ionicons name="wifi" size={16} color={activeTab === 'hosts' ? '#fff' : colors.textMuted} />
+          <Text style={[localStyles.tabText, { color: activeTab === 'hosts' ? '#fff' : colors.textMuted }]}>All Hosts</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && !refreshing ? (
+        <View style={localStyles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 12, color: colors.textMuted }}>Fetching users...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={data}
+          renderItem={activeTab === 'active' ? renderActiveItem : renderHostItem}
+          keyExtractor={(item) => item['.id']}
+          contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            data.length > 0 ? (
+              <View style={[styles.card, { marginBottom: 12, padding: 15, backgroundColor: colors.primary + '05', borderColor: colors.primary + '20' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={[localStyles.iconContainer, { backgroundColor: colors.primary + '20', width: 40, height: 40, borderRadius: 20 }]}>
+                      <Ionicons name="people" size={22} color={colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={[localStyles.userName, { color: colors.foreground, fontSize: 16 }]}>Monitoring Overview</Text>
+                      <Text style={[localStyles.userMeta, { color: colors.textMuted }]}>{activeTab === 'active' ? 'Currently connected users' : 'All identified hotspot hosts'}</Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '900' }}>{onlineCount}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>Online</Text>
+                  </View>
+                </View>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={localStyles.center}>
+              <Ionicons name="people-outline" size={64} color={colors.textMuted} />
+              <Text style={{ marginTop: 16, color: colors.textMuted, textAlign: 'center' }}>No {activeTab === 'active' ? 'active sessions' : 'hosts'} found</Text>
+            </View>
+          }
+        />
+      )}
+    </View>
+  );
+}
+
+const localStyles = StyleSheet.create({
+  container: { flex: 1 },
+  tabBar: { flexDirection: 'row', margin: 12, marginBottom: 0, borderRadius: 10, padding: 3, borderWidth: 1 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, gap: 6 },
+  tabText: { fontSize: 13, fontWeight: '700' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  userInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  iconContainer: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  userName: { fontSize: 14, fontWeight: '700' },
+  userMeta: { fontSize: 11 },
+  kickButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  infoButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  divider: { height: 1, marginVertical: 10 },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+  statItem: { alignItems: 'flex-start' },
+  statLabel: { fontSize: 9, textTransform: 'uppercase', fontWeight: '700', marginTop: 2 },
+  statValue: { fontSize: 12, fontWeight: '800', marginTop: 1 },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, opacity: 0.8 },
+  macText: { fontSize: 10, fontFamily: 'monospace' },
+  hostDetails: { gap: 6 },
+  hostDetailRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  hostLabel: { fontSize: 12 },
+  hostValue: { fontSize: 12, fontWeight: '600' }
+});

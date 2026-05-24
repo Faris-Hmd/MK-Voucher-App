@@ -1,84 +1,352 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, SafeAreaView, TouchableOpacity, Text } from 'react-native';
-import { useState } from 'react';
-import { globalStyles, colors } from './src/theme';
+import { View, TouchableOpacity, Text, StyleSheet, Modal } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ThemeProvider, useTheme } from './src/ThemeContext';
+import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
 
 import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
+import UsersScreen from './src/screens/UsersScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import HelpScreen from './src/screens/HelpScreen';
+import StatsScreen from './src/screens/StatsScreen';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'generate'|'list'|'settings'>('generate');
+import PagerView from 'react-native-pager-view';
 
-  const renderScreen = () => {
-    switch (activeTab) {
-      case 'generate': return <GenerateScreen />;
-      case 'list': return <ListScreen />;
-      case 'settings': return <SettingsScreen />;
+type Tab = 'generate' | 'list' | 'users' | 'stats' | 'settings';
+
+const tabs: { key: Tab; label: string; icon: string }[] = [
+  { key: 'generate', label: 'Vouchers',  icon: 'add-circle' },
+  { key: 'list',     label: 'Batch',     icon: 'list'       },
+  { key: 'users',    label: 'Users',     icon: 'people'     },
+  { key: 'stats',    label: 'Stats',     icon: 'stats-chart' },
+  { key: 'settings', label: 'Settings',  icon: 'settings'   },
+];
+
+const TAB_TITLES: Record<Tab, string> = {
+  generate: 'Vouchers & Profiles',
+  list:     'Batch & Print',
+  users:    'Hotspot Users',
+  stats:    'Live Stats',
+  settings: 'Settings',
+};
+
+function AppInner() {
+  const [activeTab, setActiveTab] = useState<Tab>('generate');
+  const [showHelp, setShowHelp] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [resources, setResources] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
+  const [onlineCount, setOnlineCount] = useState<number>(0);
+  const checkInterval = useRef<any>(null);
+  const pagerRef = useRef<PagerView>(null);
+  const insets = useSafeAreaInsets();
+  const { mode, colors } = useTheme();
+
+  useEffect(() => {
+    checkStatus();
+    checkInterval.current = setInterval(checkStatus, 60000);
+    return () => clearInterval(checkInterval.current);
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+  }, [activeTab]);
+
+  const checkStatus = async () => {
+    try {
+      const status = await checkConnectionAPI();
+      setIsConnected(status);
+      if (status) {
+        const [res, h, active] = await Promise.all([
+          fetchSystemResourcesAPI(),
+          fetchSystemHealthAPI(),
+          fetchActiveSessionsAPI().catch(() => [])
+        ]);
+        setResources(res);
+        setHealth(h);
+        setOnlineCount(Array.isArray(active) ? active.length : 0);
+      } else {
+        setResources(null);
+        setHealth(null);
+        setOnlineCount(0);
+      }
+    } catch (e) {
+      setIsConnected(false);
+      setResources(null);
+      setHealth(null);
+      setOnlineCount(0);
     }
   };
 
+  const getTemperature = () => {
+    if (!health) return null;
+    if (Array.isArray(health)) {
+      const t = health.find(i => i.name === 'temperature' || i.name === 'cpu-temperature');
+      return t ? t.value : null;
+    }
+    return health.temperature || health['cpu-temperature'];
+  };
+
+  const handleTabPress = (key: Tab, index: number) => {
+    setActiveTab(key);
+    pagerRef.current?.setPage(index);
+  };
+
+  const handlePageSelected = (e: any) => {
+    const index = e.nativeEvent.position;
+    setActiveTab(tabs[index].key);
+  };
+
   return (
-    <SafeAreaView style={globalStyles.container}>
-      <StatusBar style="light" />
-      
-      {/* Header / Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'generate' && styles.activeTab]} 
-          onPress={() => setActiveTab('generate')}
-        >
-          <Text style={[styles.tabText, activeTab === 'generate' && styles.activeTabText]}>Generate</Text>
-        </TouchableOpacity>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+
+      {/* Top header bar */}
+      <View style={[styles.header, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            {TAB_TITLES[activeTab]}
+          </Text>
+        </View>
         
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'list' && styles.activeTab]} 
-          onPress={() => setActiveTab('list')}
-        >
-          <Text style={[styles.tabText, activeTab === 'list' && styles.activeTabText]}>List & Print</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'settings' && styles.activeTab]} 
-          onPress={() => setActiveTab('settings')}
-        >
-          <Text style={[styles.tabText, activeTab === 'settings' && styles.activeTabText]}>Settings</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {isConnected !== null && (
+            <View style={[styles.statusBadge, { backgroundColor: isConnected ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={[styles.statusDot, { backgroundColor: isConnected ? '#22c55e' : '#ef4444' }]} />
+                <Text style={[styles.statusText, { color: isConnected ? '#22c55e' : '#ef4444' }]}>
+                  {isConnected ? 'Connected' : 'Offline'}
+                </Text>
+              </View>
+            </View>
+          )}
+          <TouchableOpacity onPress={() => setShowHelp(true)} style={styles.helpBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="help-circle-outline" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Main Content Area */}
-      <View style={{ flex: 1 }}>
-        {renderScreen()}
+      {/* Second bar for system resources */}
+      {isConnected && resources && (
+        <View style={[styles.subHeader, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
+          <View style={styles.resourceItem}>
+            <Ionicons name="people" size={14} color="#22c55e" />
+            <Text style={[styles.resourceText, { color: colors.foreground }]}>
+              Online: <Text style={{ fontWeight: '400' }}>{onlineCount}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.resourceItem}>
+            <Ionicons name="hardware-chip-outline" size={14} color={colors.primary} />
+            <Text style={[styles.resourceText, { color: colors.foreground }]}>
+              CPU: <Text style={{ fontWeight: '400' }}>{resources['cpu-load']}%</Text>
+            </Text>
+          </View>
+          
+          <View style={styles.resourceItem}>
+            <Ionicons name="pie-chart-outline" size={14} color={colors.primary} />
+            <Text style={[styles.resourceText, { color: colors.foreground }]}>
+              RAM: <Text style={{ fontWeight: '400' }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
+            </Text>
+          </View>
+
+          <View style={styles.resourceItem}>
+            <Ionicons name="time-outline" size={14} color={colors.primary} />
+            <Text style={[styles.resourceText, { color: colors.foreground }]}>
+              Up: <Text style={{ fontWeight: '400' }}>{formatUptimeAPI(resources['uptime'])}</Text>
+            </Text>
+          </View>
+
+          {getTemperature() && (
+            <View style={styles.resourceItem}>
+              <Ionicons name="thermometer-outline" size={14} color="#ef4444" />
+              <Text style={[styles.resourceText, { color: colors.foreground }]}>
+                <Text style={{ fontWeight: '400' }}>{getTemperature()}°C</Text>
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Third bar for model name */}
+      {isConnected && resources?.['board-name'] && (
+        <View style={[styles.modelBar, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
+          <Ionicons name="cube-outline" size={14} color={colors.primary} />
+          <Text style={[styles.modelText, { color: colors.foreground }]}>
+            Device: <Text style={{ fontWeight: '400' }}>{resources['board-name']}</Text>
+          </Text>
+        </View>
+      )}
+
+      {/* Swipeable Main content */}
+      <PagerView
+        ref={pagerRef}
+        style={{ flex: 1 }}
+        initialPage={0}
+        onPageSelected={handlePageSelected}
+      >
+        <View key="1"><GenerateScreen /></View>
+        <View key="2"><ListScreen /></View>
+        <View key="3"><UsersScreen /></View>
+        <View key="4">
+          <StatsScreen 
+            resources={resources} 
+            health={health} 
+            getTemperature={getTemperature} 
+            isConnected={isConnected} 
+          />
+        </View>
+        <View key="5"><SettingsScreen onSave={checkStatus} /></View>
+      </PagerView>
+
+      {/* Bottom Navigation Bar */}
+      <View style={[styles.bottomBar, {
+        backgroundColor: colors.cardBg,
+        borderTopColor: colors.glassBorder,
+        paddingBottom: insets.bottom + 8,
+      }]}>
+        {tabs.map((tab, index) => {
+          const active = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tabButton}
+              onPress={() => handleTabPress(tab.key, index)}
+            >
+              <Ionicons
+                name={tab.icon as any}
+                size={24}
+                color={active ? colors.primary : colors.textMuted}
+              />
+              <Text style={[styles.tabText, { color: active ? colors.primary : colors.textMuted }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-    </SafeAreaView>
+      {/* Help Modal */}
+      <Modal
+        visible={showHelp}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowHelp(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          {/* Modal header */}
+          <View style={[styles.modalHeader, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder, paddingTop: insets.top || 16 }]}>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>Setup Guide</Text>
+            <TouchableOpacity onPress={() => setShowHelp(false)} style={styles.helpBtn}>
+              <Ionicons name="close-circle-outline" size={26} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <HelpScreen />
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppInner />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  tabsContainer: {
+  header: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    marginBottom: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.glassBorder,
-    paddingBottom: 10,
-    gap: 10
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  helpBtn: {
+    padding: 2,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    paddingTop: 10,
+    justifyContent: 'space-around',
   },
   tabButton: {
-    flex: 1,
-    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeTab: {
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    justifyContent: 'center',
+    flex: 1,
   },
   tabText: {
-    color: colors.textMuted,
     fontWeight: '600',
+    fontSize: 11,
+    marginTop: 4,
   },
-  activeTabText: {
-    color: colors.primary,
-  }
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginLeft: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  subHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  resourceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  resourceText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  modelBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+  },
+  modelText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
 });

@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "MK-Voucher-App",
+    "name": "MK Voucher",
     "slug": "MK-Voucher-App",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#f0f4f8"
     },
     "ios": {
       "supportsTablet": true
@@ -19,13 +19,37 @@
       "package": "com.faris.mkvoucher",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#030305"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#f0f4f8"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4ad4ac72-7af8-4de3-bae7-9d4c3ae7eca4"
+      }
     }
   }
 }
