@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { useTheme } from '../ThemeContext';
 import { saveConfig, loadConfig, saveSavedRouters, loadSavedRouters, RouterConfig } from '../store';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function SettingsScreen({ onSave }: { onSave?: () => void }) {
+export default function SettingsScreen({ 
+  onSave,
+  activeRouter,
+  setActiveRouter
+}: { 
+  onSave?: () => void;
+  activeRouter: RouterConfig | null;
+  setActiveRouter: (router: RouterConfig | null) => void;
+}) {
   const { colors, styles, mode, toggleTheme } = useTheme();
   const [deviceName, setDeviceName] = useState('');
   const [ip, setIp] = useState('192.168.1.56');
@@ -13,219 +21,449 @@ export default function SettingsScreen({ onSave }: { onSave?: () => void }) {
   const [wifiName, setWifiName] = useState('WI-FI ACCESS');
   
   const [savedRouters, setSavedRouters] = useState<RouterConfig[]>([]);
+  const [editingRouterId, setEditingRouterId] = useState<string | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
       const conf = await loadConfig();
-      if (conf) {
-        if (conf.name) setDeviceName(conf.name);
-        setIp(conf.ip);
-        setUser(conf.user);
-        setPass(conf.pass);
-        if (conf.wifiName) setWifiName(conf.wifiName);
-      }
-      
       const routers = await loadSavedRouters();
-      setSavedRouters(routers);
+      
+      // Sanitize to ensure every router has a unique id (backward compatibility)
+      const sanitized = routers.map((r, idx) => {
+        if (!r.id) {
+          return { ...r, id: r.ip || `router_${idx}_${Date.now()}` };
+        }
+        return r;
+      });
+      if (JSON.stringify(routers) !== JSON.stringify(sanitized)) {
+        await saveSavedRouters(sanitized);
+      }
+      setSavedRouters(sanitized);
+
+      if (conf) {
+        const matched = sanitized.find(r => r.ip === conf.ip && r.user === conf.user);
+        setActiveRouter(matched || conf);
+      }
     })();
   }, []);
 
   const handleSave = async () => {
     if (!ip || !user) {
-      Alert.alert('Error', 'IP and User are required');
+      Alert.alert('Error', 'IP Address and Username are required');
       return;
     }
     
-    const newConfig: RouterConfig = {
-      id: ip, // Use IP as ID
-      name: deviceName || ip,
-      ip,
-      user,
-      pass,
-      wifiName
-    };
-    
-    await saveConfig(newConfig);
-    
-    let updatedRouters = [...savedRouters];
-    const existingIdx = updatedRouters.findIndex(r => r.ip === ip);
-    if (existingIdx >= 0) {
-      updatedRouters[existingIdx] = newConfig;
+    if (editingRouterId) {
+      // Edit Mode - update existing router in the list
+      const updated = savedRouters.map(r => r.id === editingRouterId ? {
+        id: editingRouterId,
+        name: deviceName || ip,
+        ip,
+        user,
+        pass,
+        wifiName
+      } : r);
+      
+      await saveSavedRouters(updated);
+      setSavedRouters(updated);
+      
+      // If the edited router was currently active, update active config as well
+      if (activeRouter?.id === editingRouterId) {
+        const updatedConfig = {
+          id: editingRouterId,
+          name: deviceName || ip,
+          ip,
+          user,
+          pass,
+          wifiName
+        };
+        await saveConfig(updatedConfig);
+        setActiveRouter(updatedConfig);
+        if (onSave) onSave();
+      }
+      
+      Alert.alert('Success', 'Router configuration updated!');
     } else {
-      updatedRouters.push(newConfig);
+      // Add Mode - save new router
+      const newId = Date.now().toString();
+      const newConfig: RouterConfig = {
+        id: newId,
+        name: deviceName || ip,
+        ip,
+        user,
+        pass,
+        wifiName
+      };
+      
+      const updated = [...savedRouters, newConfig];
+      await saveSavedRouters(updated);
+      setSavedRouters(updated);
+      
+      // Automatically select and activate the newly added router
+      await saveConfig(newConfig);
+      setActiveRouter(newConfig);
+      if (onSave) onSave();
+      
+      Alert.alert('Success', 'New router added and selected!');
     }
-    
-    await saveSavedRouters(updatedRouters);
-    setSavedRouters(updatedRouters);
 
-    if (onSave) onSave();
-    Alert.alert('Success', 'Router Configuration Saved!');
+    setIsModalVisible(false);
+    setEditingRouterId(null);
   };
 
   const handleSelectRouter = async (router: RouterConfig) => {
+    setActiveRouter(router);
+    await saveConfig(router);
+    if (onSave) onSave();
+    Alert.alert('Success', `Switched to ${router.name || router.ip}`);
+  };
+
+  const handleAddNewClick = () => {
+    setEditingRouterId(null);
+    setDeviceName('');
+    setIp('');
+    setUser('');
+    setPass('');
+    setWifiName('');
+    setIsModalVisible(true);
+  };
+
+  const handleStartEdit = (router: RouterConfig) => {
+    setEditingRouterId(router.id || null);
     setDeviceName(router.name || '');
     setIp(router.ip);
     setUser(router.user);
     setPass(router.pass);
     setWifiName(router.wifiName || '');
-    
-    await saveConfig(router);
-    if (onSave) onSave();
-    Alert.alert('Success', `Switched to ${router.name || router.ip}`);
+    setIsModalVisible(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsModalVisible(false);
+    setEditingRouterId(null);
   };
 
   const handleDeleteRouter = (router: RouterConfig) => {
     Alert.alert('Delete', `Remove ${router.name || router.ip}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-        const updated = savedRouters.filter(r => r.ip !== router.ip);
+        const updated = savedRouters.filter(r => r.id !== router.id);
         await saveSavedRouters(updated);
         setSavedRouters(updated);
+        
+        // If the deleted router was active, clear active config
+        if (activeRouter?.id === router.id) {
+          await saveConfig({ ip: '', user: '', pass: '' });
+          setActiveRouter(null);
+          if (onSave) onSave();
+        }
       }}
     ]);
   };
 
   return (
-    <ScrollView style={[styles.content, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView style={[styles.content, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
 
-      {/* Appearance card */}
-      <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
-        <Text style={[styles.label, { fontSize: 12, marginBottom: 10 }]}>Appearance</Text>
-        <TouchableOpacity
-          onPress={toggleTheme}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingVertical: 2,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Ionicons
-              name={mode === 'dark' ? 'moon' : 'sunny'}
-              size={20}
-              color={colors.primary}
-            />
-            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600' }}>
-              {mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
-            </Text>
-          </View>
-          <View style={{
-            width: 44, height: 24, borderRadius: 12,
-            backgroundColor: mode === 'dark' ? colors.primary : colors.glassBorder,
-            justifyContent: 'center',
-            padding: 2,
-          }}>
-            <View style={{
-              width: 20, height: 20, borderRadius: 10,
-              backgroundColor: '#fff',
-              alignSelf: mode === 'dark' ? 'flex-end' : 'flex-start',
-            }} />
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* Router config card */}
-      <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
-        <Text style={[styles.label, { fontSize: 12, marginBottom: 12 }]}>Router Setup</Text>
-
-        <View style={{ marginBottom: 12 }}>
-          <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Device Name (Optional)</Text>
-          <TextInput style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} value={deviceName} onChangeText={setDeviceName} placeholder="e.g. Main Router" placeholderTextColor={colors.textMuted} />
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>IP Address</Text>
-            <TextInput style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} value={ip} onChangeText={setIp} placeholder="192.168.1.1" placeholderTextColor={colors.textMuted} keyboardType="url" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Wi-Fi Name</Text>
-            <TextInput style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} value={wifiName} onChangeText={setWifiName} placeholder="Wi-Fi Access" placeholderTextColor={colors.textMuted} />
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 15 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Username</Text>
-            <TextInput style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} value={user} onChangeText={setUser} placeholder="admin" placeholderTextColor={colors.textMuted} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Password</Text>
-            <TextInput style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} value={pass} onChangeText={setPass} secureTextEntry placeholder="admin" placeholderTextColor={colors.textMuted} />
-          </View>
-        </View>
-
-        <TouchableOpacity style={[styles.button, { padding: 12, marginTop: 5 }]} onPress={handleSave}>
-          <Text style={[styles.buttonText, { fontSize: 14 }]}>Save Setup</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Saved Devices */}
-      {savedRouters.length > 0 && (
+        {/* Appearance card */}
         <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
-          <Text style={[styles.label, { fontSize: 12, marginBottom: 12 }]}>Saved Devices</Text>
-          {savedRouters.map((router, idx) => (
-            <View key={idx} style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
+          <Text style={[styles.label, { fontSize: 12, marginBottom: 10 }]}>Appearance</Text>
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
               justifyContent: 'space-between',
-              paddingVertical: 10,
-              borderBottomWidth: idx < savedRouters.length - 1 ? 1 : 0,
-              borderBottomColor: colors.glassBorder
+              paddingVertical: 2,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons
+                name={mode === 'dark' ? 'moon' : 'sunny'}
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600' }}>
+                {mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
+              </Text>
+            </View>
+            <View style={{
+              width: 44, height: 24, borderRadius: 12,
+              backgroundColor: mode === 'dark' ? colors.primary : colors.glassBorder,
+              justifyContent: 'center',
+              padding: 2,
             }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>{router.name || router.ip}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{router.ip}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity 
-                  style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.primary, borderRadius: 6 }}
+              <View style={{
+                width: 20, height: 20, borderRadius: 10,
+                backgroundColor: '#fff',
+                alignSelf: mode === 'dark' ? 'flex-end' : 'flex-start',
+              }} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Saved Devices */}
+        <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={[styles.label, { fontSize: 12, marginBottom: 0 }]}>Saved Routers</Text>
+            <TouchableOpacity 
+              onPress={handleAddNewClick}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Add New</Text>
+            </TouchableOpacity>
+          </View>
+
+          {savedRouters.length === 0 ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <Ionicons name="wifi-outline" size={36} color={colors.textMuted} style={{ marginBottom: 8 }} />
+              <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
+                No saved routers. Tap "+ Add New" to add one.
+              </Text>
+            </View>
+          ) : (
+            savedRouters.map((router, idx) => {
+              const isActive = activeRouter && (router.id === activeRouter.id || (router.ip === activeRouter.ip && router.user === activeRouter.user));
+              return (
+                <TouchableOpacity
+                  key={router.id || idx}
+                  activeOpacity={0.7}
                   onPress={() => handleSelectRouter(router)}
+                  style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    marginHorizontal: -6,
+                    borderRadius: 10,
+                    backgroundColor: isActive ? (mode === 'dark' ? 'rgba(6,182,212,0.12)' : 'rgba(8,145,178,0.08)') : 'transparent',
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.primary : 'transparent',
+                    marginBottom: idx < savedRouters.length - 1 ? 8 : 0,
+                  }}
                 >
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Select</Text>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    {/* Active Indicator */}
+                    <View style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      borderWidth: 2,
+                      borderColor: isActive ? colors.primary : colors.textMuted,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isActive ? colors.primary : 'transparent'
+                    }}>
+                      {isActive && <Ionicons name="checkmark" size={12} color="#fff" />}
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
+                          {router.name || router.ip}
+                        </Text>
+                        {isActive && (
+                          <View style={{
+                            backgroundColor: mode === 'dark' ? 'rgba(6,182,212,0.2)' : 'rgba(8,145,178,0.1)',
+                            paddingHorizontal: 6,
+                            paddingVertical: 1,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: colors.primary,
+                          }}>
+                            <Text style={{ color: colors.primary, fontSize: 8, fontWeight: '800', letterSpacing: 0.5 }}>
+                              ACTIVE
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                        {router.ip} {router.wifiName ? `• ${router.wifiName}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Actions */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity 
+                      style={{ 
+                        width: 32, 
+                        height: 32, 
+                        borderRadius: 16, 
+                        backgroundColor: mode === 'dark' ? 'rgba(6,182,212,0.15)' : 'rgba(8,145,178,0.08)',
+                        alignItems: 'center', 
+                        justifyContent: 'center' 
+                      }}
+                      onPress={() => handleStartEdit(router)}
+                    >
+                      <Ionicons name="create-outline" size={14} color={colors.primary} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={{ 
+                        width: 32, 
+                        height: 32, 
+                        borderRadius: 16, 
+                        backgroundColor: 'rgba(239,68,68,0.1)', 
+                        alignItems: 'center', 
+                        justifyContent: 'center' 
+                      }}
+                      onPress={() => handleDeleteRouter(router)}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 6 }}
-                  onPress={() => handleDeleteRouter(router)}
-                >
-                  <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>Remove</Text>
-                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Developer Card */}
+        <View style={[styles.card, { padding: 15, alignItems: 'center', backgroundColor: 'rgba(6,182,212,0.05)' }]}>
+          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700', marginBottom: 2 }}>
+            MK Voucher v1.0.0
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11, textAlign: 'center', marginBottom: 12 }}>
+            © 2026 Developed by Faris Hamad
+          </Text>
+          
+          <View style={{ flexDirection: 'row', gap: 15 }}>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              onPress={() => Alert.alert('Contact', 'farishmd93@gmail.com')}
+            >
+              <Ionicons name="mail" size={14} color={colors.primary} />
+              <Text style={{ color: colors.foreground, fontSize: 12 }}>Email</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              onPress={() => Alert.alert('Contact', '+249966626693')}
+            >
+              <Ionicons name="call" size={14} color={colors.primary} />
+              <Text style={{ color: colors.foreground, fontSize: 12 }}>Call</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={{ height: 50 }} />
+      </ScrollView>
+
+      {/* Modal popup for Add/Edit Router */}
+      <Modal
+        visible={isModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelEdit}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          padding: 20
+        }}>
+          <View style={[styles.card, { 
+            padding: 20, 
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 10,
+            elevation: 8,
+          }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={[styles.label, { fontSize: 16, fontWeight: '700', marginBottom: 0, color: colors.foreground }]}>
+                {editingRouterId ? 'Edit Router' : 'Add New Router'}
+              </Text>
+              <TouchableOpacity onPress={handleCancelEdit} style={{ padding: 4 }}>
+                <Ionicons name="close" size={20} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Device Name (Optional)</Text>
+              <TextInput 
+                style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                value={deviceName} 
+                onChangeText={setDeviceName} 
+                placeholder="e.g. Main Router" 
+                placeholderTextColor={colors.textMuted} 
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>IP Address</Text>
+                <TextInput 
+                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                  value={ip} 
+                  onChangeText={setIp} 
+                  placeholder="192.168.1.1" 
+                  placeholderTextColor={colors.textMuted} 
+                  keyboardType="url" 
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Wi-Fi Name</Text>
+                <TextInput 
+                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                  value={wifiName} 
+                  onChangeText={setWifiName} 
+                  placeholder="Wi-Fi Access" 
+                  placeholderTextColor={colors.textMuted} 
+                />
               </View>
             </View>
-          ))}
-        </View>
-      )}
 
-      {/* Developer Card */}
-      <View style={[styles.card, { padding: 15, alignItems: 'center', backgroundColor: 'rgba(6,182,212,0.05)' }]}>
-        <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700', marginBottom: 2 }}>
-          MK Voucher v1.0.0
-        </Text>
-        <Text style={{ color: colors.textMuted, fontSize: 11, textAlign: 'center', marginBottom: 12 }}>
-          © 2026 Developed by Faris Hamad
-        </Text>
-        
-        <View style={{ flexDirection: 'row', gap: 15 }}>
-          <TouchableOpacity 
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-            onPress={() => Alert.alert('Contact', 'farishmd93@gmail.com')}
-          >
-            <Ionicons name="mail" size={14} color={colors.primary} />
-            <Text style={{ color: colors.foreground, fontSize: 12 }}>Email</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-            onPress={() => Alert.alert('Contact', '+249966626693')}
-          >
-            <Ionicons name="call" size={14} color={colors.primary} />
-            <Text style={{ color: colors.foreground, fontSize: 12 }}>Call</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Username</Text>
+                <TextInput 
+                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                  value={user} 
+                  onChangeText={setUser} 
+                  placeholder="admin" 
+                  placeholderTextColor={colors.textMuted} 
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Password</Text>
+                <TextInput 
+                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                  value={pass} 
+                  onChangeText={setPass} 
+                  secureTextEntry 
+                  placeholder="admin" 
+                  placeholderTextColor={colors.textMuted} 
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
 
-      <View style={{ height: 50 }} />
-    </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity 
+                style={[styles.button, { flex: 1, padding: 12, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.glassBorder, marginTop: 0 }]} 
+                onPress={handleCancelEdit}
+              >
+                <Text style={[styles.buttonText, { fontSize: 14, color: colors.foreground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, { flex: 1, padding: 12, backgroundColor: colors.primary, marginTop: 0 }]} 
+                onPress={handleSave}
+              >
+                <Text style={[styles.buttonText, { fontSize: 14, color: '#fff' }]}>
+                  {editingRouterId ? 'Save' : 'Add'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }

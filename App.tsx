@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
+import { loadConfig, RouterConfig } from './src/store';
 
 import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
@@ -37,6 +38,7 @@ function AppInner() {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
   const [showHelp, setShowHelp] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [activeRouter, setActiveRouter] = useState<RouterConfig | null>(null);
   const [resources, setResources] = useState<any>(null);
   const [health, setHealth] = useState<any>(null);
   const [onlineCount, setOnlineCount] = useState<number>(0);
@@ -57,6 +59,9 @@ function AppInner() {
 
   const checkStatus = async () => {
     try {
+      const config = await loadConfig();
+      setActiveRouter(config);
+
       const status = await checkConnectionAPI();
       setIsConnected(status);
       if (status) {
@@ -106,10 +111,18 @@ function AppInner() {
 
       {/* Top header bar */}
       <View style={[styles.header, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'column', justifyContent: 'center' }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
             {TAB_TITLES[activeTab]}
           </Text>
+          {activeRouter && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              <Ionicons name="wifi" size={11} color={isConnected ? colors.primary : colors.textMuted} />
+              <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>
+                {activeRouter.name || activeRouter.ip}
+              </Text>
+            </View>
+          )}
         </View>
         
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -199,7 +212,13 @@ function AppInner() {
             isConnected={isConnected} 
           />
         </View>
-        <View key="5"><SettingsScreen onSave={checkStatus} /></View>
+        <View key="5">
+          <SettingsScreen 
+            onSave={checkStatus} 
+            activeRouter={activeRouter}
+            setActiveRouter={setActiveRouter}
+          />
+        </View>
       </PagerView>
 
       {/* Bottom Navigation Bar */}
