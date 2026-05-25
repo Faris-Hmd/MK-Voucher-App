@@ -165,7 +165,7 @@ export default function HelpScreen() {
           { icon: 'lock-open-outline',   tip: 'If using a custom user, make sure they are in the "full" group.' },
           { icon: 'reload-outline',      tip: 'After changing CLI settings, save them with /system backup save.' },
           { icon: 'alert-circle-outline',tip: 'If connection fails, try pinging the router IP from your phone\'s browser.' },
-          { icon: 'shield-checkmark-outline', tip: 'Using VPN/WireGuard? Ensure the "www" service allows your VPN subnet in /ip service.' },
+          { icon: 'shield-checkmark-outline', tip: 'If connecting remotely, ensure your router firewall and www services permit the connection.' },
         ].map((item, idx) => (
           <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12, gap: 10 }}>
             <Ionicons name={item.icon as any} size={18} color={colors.primary} style={{ marginTop: 1 }} />

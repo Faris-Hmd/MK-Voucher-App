@@ -5,11 +5,19 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "rel": "expo run:android --variant release",
+    "prebuild": "expo prebuild",
+    "prebuild:clean": "expo prebuild --clean",
+    "wadb": "adb connect 192.168.1.146:36295"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/auth": "^24.0.0",
+    "@react-native-firebase/firestore": "^24.0.0",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "expo": "~54.0.33",
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "~8.0.8",

@@ -12,10 +12,12 @@
       "backgroundColor": "#f0f4f8"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.faris.mkvoucher"
     },
     "android": {
       "package": "com.faris.mkvoucher",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#030305"
@@ -27,6 +29,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-google-signin/google-signin",
       [
         "expo-build-properties",
         {

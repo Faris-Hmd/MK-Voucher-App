@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet, ActivityIndicator, Modal, Switch } from 'react-native';
 import { useTheme } from '../ThemeContext';
 import { saveConfig, loadConfig, saveSavedRouters, loadSavedRouters, RouterConfig } from '../store';
 import { Ionicons } from '@expo/vector-icons';
+import { getAuth, signOut } from '@react-native-firebase/auth';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+
 
 export default function SettingsScreen({ 
   onSave,
@@ -19,10 +22,37 @@ export default function SettingsScreen({
   const [user, setUser] = useState('admin');
   const [pass, setPass] = useState('admin');
   const [wifiName, setWifiName] = useState('WI-FI ACCESS');
+
   
   const [savedRouters, setSavedRouters] = useState<RouterConfig[]>([]);
   const [editingRouterId, setEditingRouterId] = useState<string | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+
+  const currentUser = getAuth().currentUser;
+
+
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out of your account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              await GoogleSignin.signOut().catch(() => {});
+              await signOut(getAuth());
+            } catch (error) {
+              console.error('Sign Out Error:', error);
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   useEffect(() => {
     (async () => {
@@ -42,7 +72,11 @@ export default function SettingsScreen({
       setSavedRouters(sanitized);
 
       if (conf) {
-        const matched = sanitized.find(r => r.ip === conf.ip && r.user === conf.user);
+        const matched = sanitized.find(
+          r => r.id === conf.id || 
+               (r.name && conf.name && r.name === conf.name) || 
+               (r.ip === conf.ip && r.user === conf.user)
+        );
         setActiveRouter(matched || conf);
       }
     })();
@@ -53,6 +87,8 @@ export default function SettingsScreen({
       Alert.alert('Error', 'IP Address and Username are required');
       return;
     }
+
+
     
     if (editingRouterId) {
       // Edit Mode - update existing router in the list
@@ -70,17 +106,12 @@ export default function SettingsScreen({
       
       // If the edited router was currently active, update active config as well
       if (activeRouter?.id === editingRouterId) {
-        const updatedConfig = {
-          id: editingRouterId,
-          name: deviceName || ip,
-          ip,
-          user,
-          pass,
-          wifiName
-        };
-        await saveConfig(updatedConfig);
-        setActiveRouter(updatedConfig);
-        if (onSave) onSave();
+        const activeItem = updated.find(r => r.id === editingRouterId);
+        if (activeItem) {
+          await saveConfig(activeItem);
+          setActiveRouter(activeItem);
+          if (onSave) onSave();
+        }
       }
       
       Alert.alert('Success', 'Router configuration updated!');
@@ -123,7 +154,7 @@ export default function SettingsScreen({
     setEditingRouterId(null);
     setDeviceName('');
     setIp('');
-    setUser('');
+    setUser('admin');
     setPass('');
     setWifiName('');
     setIsModalVisible(true);
@@ -165,6 +196,50 @@ export default function SettingsScreen({
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView style={[styles.content, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+
+        {/* Account card */}
+        {currentUser && (
+          <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
+            <Text style={[styles.label, { fontSize: 12, marginBottom: 12 }]}>Account</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                <View style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: colors.secondary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.glassBorder
+                }}>
+                  <Ionicons name="person-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                    {currentUser.displayName || 'Operator'}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }} numberOfLines={1}>
+                    {currentUser.email}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={handleSignOut}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(239, 68, 68, 0.2)'
+                }}
+              >
+                <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '700' }}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Appearance card */}
         <View style={[styles.card, { padding: 15, marginBottom: 15 }]}>
@@ -225,7 +300,10 @@ export default function SettingsScreen({
             </View>
           ) : (
             savedRouters.map((router, idx) => {
-              const isActive = activeRouter && (router.id === activeRouter.id || (router.ip === activeRouter.ip && router.user === activeRouter.user));
+              const isActive = activeRouter && (
+                router.id === activeRouter.id || 
+                (router.name && activeRouter.name && router.name === activeRouter.name)
+              );
               return (
                 <TouchableOpacity
                   key={router.id || idx}
@@ -235,30 +313,26 @@ export default function SettingsScreen({
                     flexDirection: 'row', 
                     alignItems: 'center', 
                     justifyContent: 'space-between',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    marginHorizontal: -6,
-                    borderRadius: 10,
-                    backgroundColor: isActive ? (mode === 'dark' ? 'rgba(6,182,212,0.12)' : 'rgba(8,145,178,0.08)') : 'transparent',
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.primary : 'transparent',
-                    marginBottom: idx < savedRouters.length - 1 ? 8 : 0,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    backgroundColor: isActive 
+                      ? (mode === 'dark' ? 'rgba(6,182,212,0.15)' : 'rgba(8,145,178,0.08)') 
+                      : (mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'),
+                    borderWidth: 1.5,
+                    borderColor: isActive ? colors.primary : (mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
+                    borderLeftWidth: 6,
+                    borderLeftColor: isActive ? colors.primary : (mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
+                    marginBottom: 10,
                   }}
                 >
                   <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     {/* Active Indicator */}
-                    <View style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      borderWidth: 2,
-                      borderColor: isActive ? colors.primary : colors.textMuted,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: isActive ? colors.primary : 'transparent'
-                    }}>
-                      {isActive && <Ionicons name="checkmark" size={12} color="#fff" />}
-                    </View>
+                    <Ionicons 
+                      name={isActive ? "checkmark-circle" : "ellipse-outline"} 
+                      size={22} 
+                      color={isActive ? colors.primary : colors.textMuted} 
+                    />
 
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -281,7 +355,7 @@ export default function SettingsScreen({
                         )}
                       </View>
                       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                        {router.ip} {router.wifiName ? `• ${router.wifiName}` : ''}
+                        Local: {router.ip} {router.wifiName ? `• ${router.wifiName}` : ''}
                       </Text>
                     </View>
                   </View>
@@ -383,67 +457,71 @@ export default function SettingsScreen({
               </TouchableOpacity>
             </View>
 
-            <View style={{ marginBottom: 12 }}>
-              <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Device Name (Optional)</Text>
-              <TextInput 
-                style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
-                value={deviceName} 
-                onChangeText={setDeviceName} 
-                placeholder="e.g. Main Router" 
-                placeholderTextColor={colors.textMuted} 
-              />
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 15 }}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Device Name (Optional)</Text>
+                <TextInput 
+                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                  value={deviceName} 
+                  onChangeText={setDeviceName} 
+                  placeholder="e.g. Main Router" 
+                  placeholderTextColor={colors.textMuted} 
+                />
+              </View>
 
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>IP Address</Text>
-                <TextInput 
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
-                  value={ip} 
-                  onChangeText={setIp} 
-                  placeholder="192.168.1.1" 
-                  placeholderTextColor={colors.textMuted} 
-                  keyboardType="url" 
-                  autoCapitalize="none"
-                />
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>IP Address</Text>
+                  <TextInput 
+                    style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                    value={ip} 
+                    onChangeText={setIp} 
+                    placeholder="192.168.1.1" 
+                    placeholderTextColor={colors.textMuted} 
+                    keyboardType="url" 
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Wi-Fi Name</Text>
+                  <TextInput 
+                    style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                    value={wifiName} 
+                    onChangeText={setWifiName} 
+                    placeholder="Wi-Fi Access" 
+                    placeholderTextColor={colors.textMuted} 
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Wi-Fi Name</Text>
-                <TextInput 
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
-                  value={wifiName} 
-                  onChangeText={setWifiName} 
-                  placeholder="Wi-Fi Access" 
-                  placeholderTextColor={colors.textMuted} 
-                />
-              </View>
-            </View>
 
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Username</Text>
-                <TextInput 
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
-                  value={user} 
-                  onChangeText={setUser} 
-                  placeholder="admin" 
-                  placeholderTextColor={colors.textMuted} 
-                  autoCapitalize="none"
-                />
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Username</Text>
+                  <TextInput 
+                    style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                    value={user} 
+                    onChangeText={setUser} 
+                    placeholder="admin" 
+                    placeholderTextColor={colors.textMuted} 
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Password</Text>
+                  <TextInput 
+                    style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                    value={pass} 
+                    onChangeText={setPass} 
+                    secureTextEntry 
+                    placeholder="admin" 
+                    placeholderTextColor={colors.textMuted} 
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Password</Text>
-                <TextInput 
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
-                  value={pass} 
-                  onChangeText={setPass} 
-                  secureTextEntry 
-                  placeholder="admin" 
-                  placeholderTextColor={colors.textMuted} 
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
+
+
+            </ScrollView>
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity 

@@ -1,11 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
-import { View, TouchableOpacity, Text, StyleSheet, Modal } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
-import { loadConfig, RouterConfig } from './src/store';
+import { loadConfig, saveConfig, saveSavedRouters, loadSavedRouters, RouterConfig } from './src/store';
 
 import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
@@ -13,8 +13,12 @@ import UsersScreen from './src/screens/UsersScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import StatsScreen from './src/screens/StatsScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import PendingScreen from './src/screens/PendingScreen';
 
 import PagerView from 'react-native-pager-view';
+import { getAuth, onAuthStateChanged, FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from '@react-native-firebase/firestore';
 
 type Tab = 'generate' | 'list' | 'users' | 'stats' | 'settings';
 
@@ -46,6 +50,10 @@ function AppInner() {
   const pagerRef = useRef<PagerView>(null);
   const insets = useSafeAreaInsets();
   const { mode, colors } = useTheme();
+
+  useEffect(() => {
+    checkStatus();
+  }, [activeRouter?.id]);
 
   useEffect(() => {
     checkStatus();
@@ -86,6 +94,8 @@ function AppInner() {
     }
   };
 
+
+
   const getTemperature = () => {
     if (!health) return null;
     if (Array.isArray(health)) {
@@ -116,11 +126,12 @@ function AppInner() {
             {TAB_TITLES[activeTab]}
           </Text>
           {activeRouter && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Ionicons name="wifi" size={11} color={isConnected ? colors.primary : colors.textMuted} />
               <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>
                 {activeRouter.name || activeRouter.ip}
               </Text>
+              
             </View>
           )}
         </View>
@@ -270,11 +281,97 @@ function AppInner() {
   );
 }
 
+function AppAuthGate({ children }: { children: React.ReactNode }) {
+  const [initializing, setInitializing] = useState(true);
+  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
+  const [approved, setApproved] = useState<boolean | null>(null);
+  const { colors } = useTheme();
+
+  // Handle user state changes
+  useEffect(() => {
+    const authInstance = getAuth();
+    const unsubscribe = onAuthStateChanged(authInstance, (usr) => {
+      setUser(usr);
+      if (!usr) {
+        setApproved(null);
+        setInitializing(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Listen to the Firestore user document in real-time
+  useEffect(() => {
+    if (!user) return;
+
+    const userDocId = user.email ? user.email.toLowerCase() : null;
+    if (!userDocId) {
+      console.warn('No email found for user during Firestore check');
+      setInitializing(false);
+      return;
+    }
+
+    const db = getFirestore();
+    const userDocRef = doc(db, 'users', userDocId);
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      async (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setApproved(!!data?.approved);
+        } else {
+          // If the document doesn't exist, register the user automatically
+          try {
+            await setDoc(userDocRef, {
+              uid: user.uid,
+              email: userDocId,
+              name: user.displayName || 'Unnamed User',
+              approved: false,
+              createdAt: serverTimestamp(),
+            });
+            setApproved(false);
+          } catch (err) {
+            console.error('Failed to create user document:', err);
+            setApproved(false);
+          }
+        }
+        setInitializing(false);
+      },
+      (err) => {
+        console.error('Firestore user doc snapshot error:', err);
+        setInitializing(false);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  if (!approved) {
+    return <PendingScreen email={user.email} />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <AppInner />
+        <AppAuthGate>
+          <AppInner />
+        </AppAuthGate>
       </ThemeProvider>
     </SafeAreaProvider>
   );
