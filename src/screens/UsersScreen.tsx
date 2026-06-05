@@ -4,7 +4,6 @@ import {
   Text, 
   FlatList, 
   TouchableOpacity, 
-  RefreshControl, 
   StyleSheet, 
   Alert,
   ActivityIndicator,
@@ -133,7 +132,7 @@ export default function UsersScreen() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(true), 60000);
+    const interval = setInterval(() => loadData(true), 30000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -210,24 +209,22 @@ export default function UsersScreen() {
       <View style={styles.card}>
         <View style={localStyles.cardHeader}>
           <View style={localStyles.userInfo}>
-            <View style={[localStyles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="person" size={20} color={colors.primary} />
+            <View style={[localStyles.iconContainer, { backgroundColor: colors.secondary }]}>
+              <Ionicons name="person" size={16} color={colors.primary} />
             </View>
-            <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <Text style={[localStyles.userName, { color: colors.foreground }]}>{item.user}</Text>
                 <View style={{ 
-                  backgroundColor: item.isOnline ? '#22c55e20' : '#6b728020', 
+                  backgroundColor: item.isOnline ? 'rgba(34,197,94,0.06)' : 'rgba(107,114,128,0.06)', 
                   paddingHorizontal: 6, 
                   paddingVertical: 1, 
                   borderRadius: 4,
-                  borderWidth: 1,
-                  borderColor: item.isOnline ? '#22c55e30' : '#6b728030'
                 }}>
-                  <Text style={{ color: item.isOnline ? '#22c55e' : '#9ca3af', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' }}>{item.status}</Text>
+                  <Text style={{ color: item.isOnline ? '#22c55e' : colors.textMuted, fontSize: 9, fontWeight: '500' }}>{item.status}</Text>
                 </View>
               </View>
-              <Text style={[localStyles.userMeta, { color: colors.primary, fontWeight: '600' }]}>{item.deviceName}</Text>
+              <Text style={[localStyles.userMeta, { color: colors.primary, fontWeight: '500', marginTop: 2 }]}>{item.deviceName}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                 <Ionicons name="location-outline" size={12} color={colors.textMuted} />
                 <Text style={[localStyles.userMeta, { color: colors.textMuted, marginTop: 0 }]}>
@@ -240,34 +237,30 @@ export default function UsersScreen() {
             {item.isOnline && (
               <TouchableOpacity 
                 onPress={() => handleKick(item)}
-                style={[localStyles.kickButton, { backgroundColor: '#ef444420' }]}
+                style={[localStyles.kickButton, { backgroundColor: 'rgba(239,68,68,0.06)' }]}
               >
-                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+                <Ionicons name="log-out-outline" size={16} color="#ef4444" />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder, marginVertical: 8 }]} />
+        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder, marginVertical: 10 }]} />
 
         <View style={localStyles.statsGrid}>
           <View style={localStyles.statItem}>
-            <Ionicons name="briefcase-outline" size={14} color={colors.textMuted} />
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Profile</Text>
             <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.profile}</Text>
           </View>
           <View style={localStyles.statItem}>
-            <Ionicons name="time-outline" size={14} color={colors.textMuted} />
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Uptime</Text>
             <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.uptime}</Text>
           </View>
           <View style={localStyles.statItem}>
-            <Ionicons name="hourglass-outline" size={14} color={colors.primary} />
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Remain</Text>
             <Text style={[localStyles.statValue, { color: colors.primary }]}>{item['session-time-left']}</Text>
           </View>
           <View style={localStyles.statItem}>
-            <Ionicons name="cloud-download-outline" size={14} color={colors.textMuted} />
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Down</Text>
             <Text style={[localStyles.statValue, { color: colors.foreground }]}>{formatMB(item['bytes-out'])}</Text>
           </View>
@@ -282,25 +275,25 @@ export default function UsersScreen() {
       <View style={styles.card}>
         <View style={localStyles.cardHeader}>
           <View style={localStyles.userInfo}>
-            <View style={[localStyles.iconContainer, { backgroundColor: (item.authorized === 'true' ? '#22c55e' : colors.textMuted) + '20' }]}>
+            <View style={[localStyles.iconContainer, { backgroundColor: (item.authorized === 'true' ? '#22c55e' : colors.textMuted) + '12' }]}>
               <Ionicons 
                 name={item.authorized === 'true' ? "shield-checkmark" : "help-circle"} 
-                size={20} 
+                size={16} 
                 color={item.authorized === 'true' ? '#22c55e' : colors.textMuted} 
               />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[localStyles.userName, { color: colors.foreground }]}>{item.deviceName !== 'Unknown Device' ? item.deviceName : item.address}</Text>
-              <Text style={[localStyles.userMeta, { color: colors.textMuted }]}>
+              <Text style={[localStyles.userMeta, { color: colors.textMuted, marginTop: 2 }]}>
                 {item.authorized === 'true' ? `Authorized (${item.address})` : 'Unauthenticated'}
               </Text>
             </View>
           </View>
           <TouchableOpacity 
             onPress={() => toggleExpand(item['.id'])}
-            style={[localStyles.infoButton, { backgroundColor: colors.glassBorder }]}
+            style={[localStyles.infoButton, { backgroundColor: colors.secondary }]}
           >
-            <Ionicons name={isExpanded ? "chevron-up" : "information-circle-outline"} size={18} color={colors.primary} />
+            <Ionicons name={isExpanded ? "chevron-up" : "information-circle-outline"} size={16} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -310,7 +303,7 @@ export default function UsersScreen() {
           {item.interface && item.interface !== 'unknown' && (
             <View style={localStyles.hostDetailRow}>
               <Text style={[localStyles.hostLabel, { color: colors.textMuted }]}>Port</Text>
-              <Text style={[localStyles.hostValue, { color: colors.primary, fontWeight: '700' }]}>{item.interface}</Text>
+              <Text style={[localStyles.hostValue, { color: colors.primary, fontWeight: '500' }]}>{item.interface}</Text>
             </View>
           )}
           {item.profile && (
@@ -346,28 +339,33 @@ export default function UsersScreen() {
 
   return (
     <View style={localStyles.container}>
-      <View style={{ height: 10 }} />
-      <View style={[localStyles.tabBar, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 12, marginTop: 15, marginBottom: 5 }}>
+        <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '600' }}>Hotspot Monitoring</Text>
+        <TouchableOpacity onPress={onRefresh} disabled={refreshing || loading} style={{ padding: 6 }}>
+          {(refreshing || (loading && data.length === 0)) ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="refresh" size={18} color={colors.primary} />}
+        </TouchableOpacity>
+      </View>
+      <View style={[localStyles.tabBar, { backgroundColor: colors.inputBg }]}>
         <TouchableOpacity 
           onPress={() => setActiveTab('active')}
-          style={[localStyles.tab, activeTab === 'active' && { backgroundColor: colors.primary }]}
+          style={[localStyles.tab, activeTab === 'active' && { backgroundColor: colors.cardBg }]}
         >
-          <Ionicons name="flash" size={16} color={activeTab === 'active' ? '#fff' : colors.textMuted} />
-          <Text style={[localStyles.tabText, { color: activeTab === 'active' ? '#fff' : colors.textMuted }]}>Active Sessions</Text>
+          <Ionicons name="flash" size={14} color={activeTab === 'active' ? colors.primary : colors.textMuted} />
+          <Text style={[localStyles.tabText, { color: activeTab === 'active' ? colors.foreground : colors.textMuted }]}>Active Sessions</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           onPress={() => setActiveTab('hosts')}
-          style={[localStyles.tab, activeTab === 'hosts' && { backgroundColor: colors.primary }]}
+          style={[localStyles.tab, activeTab === 'hosts' && { backgroundColor: colors.cardBg }]}
         >
-          <Ionicons name="wifi" size={16} color={activeTab === 'hosts' ? '#fff' : colors.textMuted} />
-          <Text style={[localStyles.tabText, { color: activeTab === 'hosts' ? '#fff' : colors.textMuted }]}>All Hosts</Text>
+          <Ionicons name="wifi" size={14} color={activeTab === 'hosts' ? colors.primary : colors.textMuted} />
+          <Text style={[localStyles.tabText, { color: activeTab === 'hosts' ? colors.foreground : colors.textMuted }]}>All Hosts</Text>
         </TouchableOpacity>
       </View>
 
       {loading && !refreshing ? (
         <View style={localStyles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={{ marginTop: 12, color: colors.textMuted }}>Fetching users...</Text>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={{ marginTop: 12, color: colors.textMuted, fontSize: 13 }}>Fetching users...</Text>
         </View>
       ) : (
         <FlatList
@@ -375,23 +373,22 @@ export default function UsersScreen() {
           renderItem={activeTab === 'active' ? renderActiveItem : renderHostItem}
           keyExtractor={(item) => item['.id']}
           contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           ListHeaderComponent={
             data.length > 0 ? (
-              <View style={[styles.card, { marginBottom: 12, padding: 15, backgroundColor: colors.primary + '05', borderColor: colors.primary + '20' }]}>
+              <View style={[styles.card, { marginBottom: 12, padding: 12, backgroundColor: colors.secondary }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={[localStyles.iconContainer, { backgroundColor: colors.primary + '20', width: 40, height: 40, borderRadius: 20 }]}>
-                      <Ionicons name="people" size={22} color={colors.primary} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={[localStyles.iconContainer, { backgroundColor: colors.primary + '12', width: 36, height: 36, borderRadius: 18 }]}>
+                      <Ionicons name="people" size={18} color={colors.primary} />
                     </View>
                     <View>
-                      <Text style={[localStyles.userName, { color: colors.foreground, fontSize: 16 }]}>Monitoring Overview</Text>
-                      <Text style={[localStyles.userMeta, { color: colors.textMuted }]}>{activeTab === 'active' ? 'Currently connected users' : 'All identified hotspot hosts'}</Text>
+                      <Text style={[localStyles.userName, { color: colors.foreground, fontSize: 15, fontWeight: '600' }]}>Monitoring Overview</Text>
+                      <Text style={[localStyles.userMeta, { color: colors.textMuted, fontSize: 11, fontWeight: '500' }]}>{activeTab === 'active' ? 'Currently connected users' : 'All identified hotspot hosts'}</Text>
                     </View>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '900' }}>{onlineCount}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>Online</Text>
+                    <Text style={{ color: colors.primary, fontSize: 20, fontWeight: '600' }}>{onlineCount}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>ONLINE</Text>
                   </View>
                 </View>
               </View>
@@ -399,8 +396,8 @@ export default function UsersScreen() {
           }
           ListEmptyComponent={
             <View style={localStyles.center}>
-              <Ionicons name="people-outline" size={64} color={colors.textMuted} />
-              <Text style={{ marginTop: 16, color: colors.textMuted, textAlign: 'center' }}>No {activeTab === 'active' ? 'active sessions' : 'hosts'} found</Text>
+              <Ionicons name="people-outline" size={48} color={colors.textMuted} />
+              <Text style={{ marginTop: 12, color: colors.textMuted, textAlign: 'center', fontSize: 13 }}>No {activeTab === 'active' ? 'active sessions' : 'hosts'} found</Text>
             </View>
           }
         />
@@ -411,26 +408,26 @@ export default function UsersScreen() {
 
 const localStyles = StyleSheet.create({
   container: { flex: 1 },
-  tabBar: { flexDirection: 'row', margin: 12, marginBottom: 0, borderRadius: 10, padding: 3, borderWidth: 1 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, gap: 6 },
-  tabText: { fontSize: 13, fontWeight: '700' },
+  tabBar: { flexDirection: 'row', margin: 12, marginBottom: 0, borderRadius: 10, padding: 4, gap: 4 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 6, gap: 6 },
+  tabText: { fontSize: 13, fontWeight: '500' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  userInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  userInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   iconContainer: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  userName: { fontSize: 14, fontWeight: '700' },
+  userName: { fontSize: 14, fontWeight: '500' },
   userMeta: { fontSize: 11 },
   kickButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   infoButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  divider: { height: 1, marginVertical: 10 },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
   statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   statItem: { alignItems: 'flex-start' },
-  statLabel: { fontSize: 9, textTransform: 'uppercase', fontWeight: '700', marginTop: 2 },
-  statValue: { fontSize: 12, fontWeight: '800', marginTop: 1 },
+  statLabel: { fontSize: 10, fontWeight: '500', color: '#888' },
+  statValue: { fontSize: 12, fontWeight: '500', marginTop: 2 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, opacity: 0.8 },
   macText: { fontSize: 10, fontFamily: 'monospace' },
   hostDetails: { gap: 6 },
   hostDetailRow: { flexDirection: 'row', justifyContent: 'space-between' },
   hostLabel: { fontSize: 12 },
-  hostValue: { fontSize: 12, fontWeight: '600' }
+  hostValue: { fontSize: 12, fontWeight: '500' }
 });

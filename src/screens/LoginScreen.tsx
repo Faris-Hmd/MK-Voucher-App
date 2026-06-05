@@ -49,14 +49,10 @@ export default function LoginScreen() {
 
   return (
     <View style={[styles.container, localStyles.container]}>
-      {/* Background decoration circles (vibrant glow) */}
-      <View style={[localStyles.glowCircle, { backgroundColor: colors.primary, top: '20%', left: '-10%' }]} />
-      <View style={[localStyles.glowCircle, { backgroundColor: colors.accent, bottom: '20%', right: '-10%' }]} />
-
       <View style={[styles.card, localStyles.loginCard]}>
         <View style={localStyles.headerContainer}>
           <View style={[localStyles.iconWrapper, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
-            <Ionicons name="shield-checkmark-outline" size={40} color={colors.primary} />
+            <Ionicons name="shield-checkmark-outline" size={32} color={colors.primary} />
           </View>
           <Text style={[localStyles.title, { color: colors.foreground }]}>MK Manager</Text>
           <Text style={[localStyles.subtitle, { color: colors.textMuted }]}>
@@ -74,7 +70,7 @@ export default function LoginScreen() {
           style={[
             styles.button,
             localStyles.googleButton,
-            { backgroundColor: colors.foreground },
+            { backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.glassBorder },
             loading && styles.buttonDisabled
           ]}
           onPress={handleGoogleSignIn}
@@ -82,11 +78,11 @@ export default function LoginScreen() {
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color={colors.background} />
+            <ActivityIndicator color={colors.foreground} />
           ) : (
             <View style={localStyles.buttonContent}>
-              <Ionicons name="logo-google" size={20} color={colors.background} />
-              <Text style={[localStyles.buttonText, { color: colors.background }]}>
+              <Ionicons name="logo-google" size={18} color={colors.foreground} />
+              <Text style={[localStyles.buttonText, { color: colors.foreground }]}>
                 Sign In with Google
               </Text>
             </View>
@@ -102,77 +98,67 @@ const localStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  glowCircle: {
-    position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    opacity: 0.15,
   },
   loginCard: {
     width: '100%',
-    maxWidth: 400,
-    padding: 30,
+    maxWidth: 360,
+    padding: 24,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 3,
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   iconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '600',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 0.5,
   },
   divider: {
     height: 1,
     width: '100%',
-    marginVertical: 10,
+    marginVertical: 12,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 20,
-    marginVertical: 15,
+    lineHeight: 18,
+    marginVertical: 12,
   },
   googleButton: {
     width: '100%',
-    height: 52,
+    height: 48,
     justifyContent: 'center',
-    marginTop: 15,
+    marginTop: 12,
   },
   buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

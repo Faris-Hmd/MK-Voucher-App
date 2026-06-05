@@ -134,22 +134,32 @@ export default function GenerateScreen() {
 
 
   return (
-    <ScrollView style={[styles.content, { backgroundColor: colors.background }]}>
+    <ScrollView 
+      style={[styles.content, { backgroundColor: colors.background }]}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header with Refresh Button */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+        <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '600' }}>Generate Vouchers</Text>
+        <TouchableOpacity onPress={loadProfiles} disabled={isLoading} style={{ padding: 6 }}>
+          {isLoading ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="refresh" size={18} color={colors.primary} />}
+        </TouchableOpacity>
+      </View>
       
       {/* View Switcher */}
-      <View style={[localStyles.switcher, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder }]}>
+      <View style={[localStyles.switcher, { backgroundColor: colors.inputBg }]}>
         <TouchableOpacity 
-          style={[localStyles.switchBtn, viewMode === 'generate' && { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, elevation: 2 }]}
+          style={[localStyles.switchBtn, viewMode === 'generate' && { backgroundColor: colors.cardBg }]}
           onPress={() => setViewMode('generate')}
         >
-          <Ionicons name="add-circle" size={16} color={viewMode === 'generate' ? colors.primary : colors.textMuted} />
+          <Ionicons name="add-circle" size={15} color={viewMode === 'generate' ? colors.primary : colors.textMuted} />
           <Text style={[localStyles.switchText, { color: viewMode === 'generate' ? colors.foreground : colors.textMuted }]}>Generate</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[localStyles.switchBtn, viewMode === 'profiles' && { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, elevation: 2 }]}
+          style={[localStyles.switchBtn, viewMode === 'profiles' && { backgroundColor: colors.cardBg }]}
           onPress={() => setViewMode('profiles')}
         >
-          <Ionicons name="layers" size={16} color={viewMode === 'profiles' ? colors.primary : colors.textMuted} />
+          <Ionicons name="layers" size={15} color={viewMode === 'profiles' ? colors.primary : colors.textMuted} />
           <Text style={[localStyles.switchText, { color: viewMode === 'profiles' ? colors.foreground : colors.textMuted }]}>Profiles</Text>
         </TouchableOpacity>
       </View>
@@ -162,18 +172,17 @@ export default function GenerateScreen() {
               <TouchableOpacity
                 key={p['.id']}
                 style={{
-                  backgroundColor: selectedProfile === p.name ? colors.primary : colors.inputBg,
-                  paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, marginRight: 6, marginBottom: 6,
-                  borderWidth: 1, borderColor: selectedProfile === p.name ? colors.primary : colors.glassBorder,
+                  backgroundColor: selectedProfile === p.name ? colors.primary : colors.secondary,
+                  paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginRight: 6, marginBottom: 6,
                 }}
                 onPress={() => setSelectedProfile(p.name)}
               >
-                <Text style={{ color: selectedProfile === p.name ? '#fff' : colors.foreground, fontWeight: '700', fontSize: 12 }}>{p.name}</Text>
+                <Text style={{ color: selectedProfile === p.name ? '#fff' : colors.foreground, fontWeight: '500', fontSize: 12 }}>{p.name}</Text>
               </TouchableOpacity>
             ))}
             {profiles.length === 0 && !isLoading && (
               <TouchableOpacity onPress={() => setViewMode('profiles')} style={{ padding: 6 }}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>+ Create First Profile</Text>
+                <Text style={{ color: colors.primary, fontWeight: '500', fontSize: 12 }}>+ Create First Profile</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -182,7 +191,7 @@ export default function GenerateScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.label, { fontSize: 11 }]}>Count</Text>
               <TextInput 
-                style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]} 
                 value={voucherCount} 
                 onChangeText={setVoucherCount} 
                 keyboardType="numeric" 
@@ -191,7 +200,7 @@ export default function GenerateScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.label, { fontSize: 11 }]}>Length</Text>
               <TextInput 
-                style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]} 
+                style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]} 
                 value={voucherLength} 
                 onChangeText={setVoucherLength} 
                 keyboardType="numeric" 
@@ -200,7 +209,7 @@ export default function GenerateScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, { padding: 12, marginTop: 5 }, (!selectedProfile || isGenerating) && styles.buttonDisabled]}
+            style={[styles.button, { paddingVertical: 12, marginTop: 5 }, (!selectedProfile || isGenerating) && styles.buttonDisabled]}
             onPress={handleGenerate}
             disabled={!selectedProfile || isGenerating}
           >
@@ -213,7 +222,7 @@ export default function GenerateScreen() {
           <View style={[styles.card, { padding: 12, marginBottom: 12 }]}>
             <Text style={[styles.label, { fontSize: 11, marginBottom: 10 }]}>New Profile</Text>
             <TextInput
-              style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 12 }]}
+              style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 12 }]}
               placeholder="Profile Name (e.g. 1 Hour)"
               placeholderTextColor={colors.textMuted}
               value={newProfileName}
@@ -223,7 +232,7 @@ export default function GenerateScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Days</Text>
                 <TextInput
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]}
+                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
                   value={validityDays}
                   onChangeText={setValidityDays}
                   keyboardType="numeric"
@@ -233,7 +242,7 @@ export default function GenerateScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Hours</Text>
                 <TextInput
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]}
+                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
                   value={validityHours}
                   onChangeText={setValidityHours}
                   keyboardType="numeric"
@@ -243,7 +252,7 @@ export default function GenerateScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Minutes</Text>
                 <TextInput
-                  style={[styles.input, { padding: 10, fontSize: 14, marginBottom: 0 }]}
+                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
                   value={validityMinutes}
                   onChangeText={setValidityMinutes}
                   keyboardType="numeric"
@@ -253,16 +262,16 @@ export default function GenerateScreen() {
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <TouchableOpacity onPress={() => setScriptModalVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="code-working" size={14} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View Script</Text>
+                <Ionicons name="code-working" size={13} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500' }}>View Script</Text>
               </TouchableOpacity>
-              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>
-                Total Validity: <Text style={{ color: colors.primary, fontWeight: '800' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>
+                Total Validity: <Text style={{ color: colors.primary, fontWeight: '600' }}>
                   {getValidityString()}
                 </Text>
               </Text>
             </View>
-            <TouchableOpacity style={[styles.button, { padding: 12 }]} onPress={handleCreateProfile} disabled={isCreating}>
+            <TouchableOpacity style={[styles.button, { paddingVertical: 12 }]} onPress={handleCreateProfile} disabled={isCreating}>
               {isCreating ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.buttonText, { fontSize: 14 }]}>Create Profile</Text>}
             </TouchableOpacity>
           </View>
@@ -271,14 +280,14 @@ export default function GenerateScreen() {
           <View style={[styles.card, { padding: 12 }]}>
             <Text style={[styles.label, { fontSize: 11, marginBottom: 10 }]}>Manage Profiles</Text>
             {profiles.map((p, idx) => (
-              <View key={p['.id']} style={[localStyles.profileRow, { borderBottomWidth: idx < profiles.length - 1 ? 1 : 0, borderBottomColor: colors.glassBorder }]}>
-                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600', flex: 1 }}>{p.name}</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View key={p['.id']} style={[localStyles.profileRow, { borderBottomWidth: idx < profiles.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.glassBorder }]}>
+                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '500', flex: 1 }}>{p.name}</Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
                   <TouchableOpacity onPress={() => { setEditingProfile(p); setEditName(p.name); setEditModalVisible(true); }}>
-                    <Ionicons name="pencil" size={16} color={colors.primary} />
+                    <Ionicons name="pencil" size={14} color={colors.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDeleteProfile(p)}>
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                    <Ionicons name="trash-outline" size={14} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -291,13 +300,13 @@ export default function GenerateScreen() {
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={localStyles.modalOverlay}>
           <View style={[localStyles.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
-            <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', marginBottom: 15 }}>Rename Profile</Text>
-            <TextInput style={[styles.input, { marginBottom: 20 }]} value={editName} onChangeText={setEditName} autoFocus />
+            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginBottom: 12 }}>Rename Profile</Text>
+            <TextInput style={[styles.input, { marginBottom: 16 }]} value={editName} onChangeText={setEditName} autoFocus />
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.inputBg }]} onPress={() => setEditModalVisible(false)}>
+              <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.inputBg, marginTop: 0 }]} onPress={() => setEditModalVisible(false)}>
                 <Text style={{ color: colors.textMuted }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { flex: 1 }]} onPress={handleSaveEdit}>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginTop: 0 }]} onPress={handleSaveEdit}>
                 <Text style={styles.buttonText}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -309,18 +318,18 @@ export default function GenerateScreen() {
       <Modal visible={scriptModalVisible} transparent animationType="slide">
         <View style={localStyles.modalOverlay}>
           <View style={[localStyles.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, maxHeight: '80%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700' }}>MikroTik Script Preview</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600' }}>MikroTik Script Preview</Text>
               <TouchableOpacity onPress={() => setScriptModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
+                <Ionicons name="close" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ backgroundColor: colors.inputBg, borderRadius: 8, padding: 12, marginBottom: 20 }}>
+            <ScrollView style={{ backgroundColor: colors.inputBg, borderRadius: 8, padding: 12, marginBottom: 16 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 12, lineHeight: 18 }}>
                 {generateProfileScript(getValidityString())}
               </Text>
             </ScrollView>
-            <TouchableOpacity style={[styles.button, { width: '100%' }]} onPress={() => setScriptModalVisible(false)}>
+            <TouchableOpacity style={[styles.button, { width: '100%', marginTop: 0 }]} onPress={() => setScriptModalVisible(false)}>
               <Text style={styles.buttonText}>Got it</Text>
             </TouchableOpacity>
           </View>
@@ -336,42 +345,40 @@ const localStyles = StyleSheet.create({
   switcher: {
     flexDirection: 'row',
     borderRadius: 10,
-    borderWidth: 1,
-    padding: 3,
-    marginBottom: 15,
-    gap: 3
+    padding: 4,
+    marginBottom: 16,
+    gap: 4
   },
   switchBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 7,
+    paddingVertical: 6,
+    borderRadius: 6,
     gap: 6,
-    borderWidth: 1,
-    borderColor: 'transparent'
   },
   switchText: {
     fontSize: 13,
-    fontWeight: '700'
+    fontWeight: '500'
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10
+    paddingVertical: 12
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 30
+    padding: 24
   },
   modalBox: {
     width: '100%',
-    padding: 20,
-    borderRadius: 15,
+    maxWidth: 360,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1
   }
 });

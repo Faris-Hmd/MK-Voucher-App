@@ -55,6 +55,14 @@ export const generateRandomString = (length: number): string => {
   return result;
 };
 
+const chunkArray = <T>(array: T[], size: number): T[][] => {
+  const chunked: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunked.push(array.slice(i, i + size));
+  }
+  return chunked;
+};
+
 export const fetchProfilesAPI = async () => {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
@@ -223,43 +231,107 @@ export const createVouchersAPI = async (profile: string, count: number, length: 
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
   
-  const results = [];
-  for (let i = 0; i < count; i++) {
+  // 1. Fetch all existing vouchers to ensure uniqueness
+  const existingUsers = await fetchVouchersAPI();
+  const existingNames = new Set((existingUsers || []).map((u: any) => u.name).filter(Boolean));
+  
+  // 2. Generate unique PINs
+  const generatedPins: string[] = [];
+  const generatedSet = new Set<string>();
+  let attempts = 0;
+  const maxAttempts = count * 10;
+  
+  while (generatedPins.length < count && attempts < maxAttempts) {
     const pin = generateRandomString(length);
-    const body: any = {
-      name: pin,
-      password: pin,
-      profile: profile,
-      server: 'all'
-    };
+    if (!existingNames.has(pin) && !generatedSet.has(pin)) {
+      generatedPins.push(pin);
+      generatedSet.add(pin);
+    }
+    attempts++;
+  }
+  
+  if (generatedPins.length < count) {
+    throw new Error(`Could only generate ${generatedPins.length} unique vouchers. Try increasing voucher length.`);
+  }
+  
+  // 3. Chunk the PINs to avoid "Payload Too Large" on RouterOS REST API
+  const chunks = chunkArray(generatedPins, 250);
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const scriptLines = chunk.map(pin => {
+      return `/ip hotspot user add name="${pin}" password="${pin}" profile="${profile}" server="all"${comment ? ` comment="${comment}"` : ''}`;
+    });
+    const scriptSource = scriptLines.join("\r\n");
+    const scriptName = `tmp_vxs_${Date.now()}_${i}`;
     
-    if (comment) {
-      body.comment = comment;
+    // 4. Create the script on the router
+    const addRes = await fetch(`${baseUrl}/rest/system/script/add`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: scriptName,
+        source: scriptSource
+      })
+    });
+    
+    if (!addRes.ok) {
+      const txt = await addRes.text();
+      throw new Error(`Failed to upload script to router (${addRes.status}): ${txt.substring(0, 100)}`);
     }
     
+    const scriptData = await addRes.json();
+    const scriptId = scriptData?.['.id'] || scriptName;
+    
+    // 5. Run the script on the router
+    let runOk = false;
+    let runErrorMsg = '';
     try {
-      const res = await fetch(`${baseUrl}/rest/ip/hotspot/user/add`, {
+      const runRes = await fetch(`${baseUrl}/rest/system/script/run`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          number: scriptName
+        })
       });
-      if (res.ok) {
-        results.push(pin);
+      if (runRes.ok) {
+        runOk = true;
       } else {
-        const txt = await res.text();
-        throw new Error(`Router rejected voucher: ${txt}`);
+        runErrorMsg = await runRes.text();
       }
     } catch (err: any) {
-      throw new Error(err.message || "Network request failed");
+      runErrorMsg = err.message || "Network error running script";
+    }
+    
+    // 6. Delete the script from the router
+    try {
+      const removeRes = await fetch(`${baseUrl}/rest/system/script/remove`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ".id": scriptId
+        })
+      });
+      if (!removeRes.ok) {
+        console.warn(`Failed to remove temporary script ${scriptName} (${removeRes.status})`);
+      }
+    } catch (e) {
+      console.warn(`Failed to remove script ${scriptName}`, e);
+    }
+    
+    // 7. Verify script execution succeeded
+    if (!runOk) {
+      throw new Error(`Failed to execute script on router: ${runErrorMsg.substring(0, 100)}`);
     }
   }
-  return results;
+  
+  return generatedPins;
 };
 
 export const fetchVouchersAPI = async () => {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  const res = await fetch(`${baseUrl}/rest/ip/hotspot/user`, { headers });
+  const res = await fetch(`${baseUrl}/rest/ip/hotspot/user?.proplist=.id,name,profile,comment`, { headers });
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`Failed to fetch users (${res.status}): ${txt.substring(0, 100)}`);
@@ -268,17 +340,77 @@ export const fetchVouchersAPI = async () => {
 };
 
 export const deleteVouchersAPI = async (ids: string[]) => {
+  if (!ids || ids.length === 0) return;
+  
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  for (const id of ids) {
+  
+  // 1. Chunk the IDs to avoid "Payload Too Large" on RouterOS REST API
+  const chunks = chunkArray(ids, 250);
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const scriptLines = chunk.map(id => `:do { /ip hotspot user remove "${id}" } on-error={}`);
+    const scriptSource = scriptLines.join("\r\n");
+    const scriptName = `tmp_delete_${Date.now()}_${i}`;
+    
+    // 2. Create the script on the router
+    const addRes = await fetch(`${baseUrl}/rest/system/script/add`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: scriptName,
+        source: scriptSource
+      })
+    });
+    
+    if (!addRes.ok) {
+      const txt = await addRes.text();
+      throw new Error(`Failed to upload delete script to router (${addRes.status}): ${txt.substring(0, 100)}`);
+    }
+    
+    const scriptData = await addRes.json();
+    const scriptId = scriptData?.['.id'] || scriptName;
+    
+    // 3. Run the script on the router
+    let runOk = false;
+    let runErrorMsg = '';
     try {
-      await fetch(`${baseUrl}/rest/ip/hotspot/user/remove`, {
+      const runRes = await fetch(`${baseUrl}/rest/system/script/run`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ".id": id })
+        body: JSON.stringify({
+          number: scriptName
+        })
       });
-    } catch(err) {
-      console.warn(`Failed to delete ${id}`, err);
+      if (runRes.ok) {
+        runOk = true;
+      } else {
+        runErrorMsg = await runRes.text();
+      }
+    } catch (err: any) {
+      runErrorMsg = err.message || "Network error running delete script";
+    }
+    
+    // 4. Delete the script from the router
+    try {
+      const removeRes = await fetch(`${baseUrl}/rest/system/script/remove`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ".id": scriptId
+        })
+      });
+      if (!removeRes.ok) {
+        console.warn(`Failed to remove temporary delete script ${scriptName} (${removeRes.status})`);
+      }
+    } catch (e) {
+      console.warn(`Failed to remove delete script ${scriptName}`, e);
+    }
+    
+    // 5. Verify script execution succeeded
+    if (!runOk) {
+      throw new Error(`Failed to execute delete script on router: ${runErrorMsg.substring(0, 100)}`);
     }
   }
 };

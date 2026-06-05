@@ -74,15 +74,15 @@ function CopyableCommand({ command, colors }: { command: string; colors: any }) 
 
   return (
     <TouchableOpacity
-      style={[localStyles.commandBox, { backgroundColor: colors.secondary || (colors.background === '#f0f4f8' ? '#e2e8f0' : '#0f1015'), borderColor: colors.glassBorder }]}
+      style={[localStyles.commandBox, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}
       onPress={handleCopy}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <Text style={[localStyles.commandText, { color: colors.primary }]}>{command}</Text>
+      <Text style={[localStyles.commandText, { color: colors.foreground }]}>{command}</Text>
       <View style={localStyles.copyBadge}>
         <Ionicons
           name={copied ? 'checkmark-circle' : 'copy-outline'}
-          size={18}
+          size={14}
           color={copied ? '#22c55e' : colors.textMuted}
         />
         <Text style={[localStyles.copyLabel, { color: copied ? '#22c55e' : colors.textMuted }]}>
@@ -97,12 +97,12 @@ export default function HelpScreen() {
   const { colors, styles } = useTheme();
 
   return (
-    <ScrollView style={[styles.content, { backgroundColor: colors.background }]}>
+    <ScrollView style={[styles.content, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
 
       {/* Version compatibility card */}
       <View style={styles.card}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Ionicons name="git-branch-outline" size={20} color={colors.primary} />
+          <Ionicons name="git-branch-outline" size={18} color={colors.primary} />
           <Text style={[styles.label, { marginBottom: 0 }]}>RouterOS Version Compatibility</Text>
         </View>
         {COMPAT_TABLE.map((row) => (
@@ -114,19 +114,19 @@ export default function HelpScreen() {
             ]}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.foreground, fontWeight: '600', fontSize: 14 }}>{row.version}</Text>
+              <Text style={{ color: colors.foreground, fontWeight: '500', fontSize: 13 }}>{row.version}</Text>
               <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{row.notes}</Text>
             </View>
             <View style={[
               localStyles.badge,
-              { backgroundColor: row.supported ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)' }
+              { backgroundColor: row.supported ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)' }
             ]}>
               <Ionicons
                 name={row.supported ? 'checkmark-circle' : 'close-circle'}
-                size={16}
+                size={14}
                 color={row.supported ? '#22c55e' : '#ef4444'}
               />
-              <Text style={{ color: row.supported ? '#22c55e' : '#ef4444', fontSize: 12, fontWeight: '700', marginLeft: 4 }}>
+              <Text style={{ color: row.supported ? '#22c55e' : '#ef4444', fontSize: 11, fontWeight: '500', marginLeft: 4 }}>
                 {row.supported ? 'Yes' : 'No'}
               </Text>
             </View>
@@ -137,7 +137,7 @@ export default function HelpScreen() {
       {/* Setup steps */}
       <View style={styles.card}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Ionicons name="terminal-outline" size={20} color={colors.primary} />
+          <Ionicons name="terminal-outline" size={18} color={colors.primary} />
           <Text style={[styles.label, { marginBottom: 0 }]}>MikroTik CLI Setup Commands</Text>
         </View>
         <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 16 }}>
@@ -145,9 +145,9 @@ export default function HelpScreen() {
         </Text>
 
         {SETUP_STEPS.map((step, idx) => (
-          <View key={idx} style={[localStyles.stepContainer, { borderBottomColor: colors.glassBorder, borderBottomWidth: idx < SETUP_STEPS.length - 1 ? 1 : 0 }]}>
-            <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 15, marginBottom: 6 }}>{step.title}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: step.command ? 10 : 0, lineHeight: 20 }}>{step.description}</Text>
+          <View key={idx} style={[localStyles.stepContainer, { borderBottomColor: colors.glassBorder, borderBottomWidth: idx < SETUP_STEPS.length - 1 ? StyleSheet.hairlineWidth : 0 }]}>
+            <Text style={{ color: colors.foreground, fontWeight: '500', fontSize: 14, marginBottom: 6 }}>{step.title}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: step.command ? 10 : 0, lineHeight: 18 }}>{step.description}</Text>
             {step.command && <CopyableCommand command={step.command} colors={colors} />}
           </View>
         ))}
@@ -156,7 +156,7 @@ export default function HelpScreen() {
       {/* Tips card */}
       <View style={styles.card}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Ionicons name="bulb-outline" size={20} color={colors.primary} />
+          <Ionicons name="bulb-outline" size={18} color={colors.primary} />
           <Text style={[styles.label, { marginBottom: 0 }]}>Troubleshooting Tips</Text>
         </View>
         {[
@@ -168,8 +168,8 @@ export default function HelpScreen() {
           { icon: 'shield-checkmark-outline', tip: 'If connecting remotely, ensure your router firewall and www services permit the connection.' },
         ].map((item, idx) => (
           <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12, gap: 10 }}>
-            <Ionicons name={item.icon as any} size={18} color={colors.primary} style={{ marginTop: 1 }} />
-            <Text style={{ color: colors.foreground, fontSize: 13, flex: 1, lineHeight: 20 }}>{item.tip}</Text>
+            <Ionicons name={item.icon as any} size={16} color={colors.primary} style={{ marginTop: 1 }} />
+            <Text style={{ color: colors.foreground, fontSize: 13, flex: 1, lineHeight: 18 }}>{item.tip}</Text>
           </View>
         ))}
       </View>
@@ -184,28 +184,28 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   stepContainer: {
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   commandBox: {
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 12,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10,
     gap: 8,
   },
   commandText: {
     fontFamily: 'monospace',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
   },
   copyBadge: {
     flexDirection: 'row',
@@ -215,6 +215,6 @@ const localStyles = StyleSheet.create({
   },
   copyLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '500',
   },
 });

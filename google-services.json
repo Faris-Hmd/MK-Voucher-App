@@ -41,6 +41,43 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:607302972148:android:d90b6703aa38cd5feb24a2",
+        "android_client_info": {
+          "package_name": "com.faris.mkvoucher.debug"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "607302972148-5frf5hg1fu3voslavjnhsrfo6cesuq0h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.faris.mkvoucher.debug",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "607302972148-9abl48jgvgijte8mpqi0ogbb4623g20a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhe7WOBxwKha_jMPAZ8URtH6_VX8g-XXw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "607302972148-9abl48jgvgijte8mpqi0ogbb4623g20a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

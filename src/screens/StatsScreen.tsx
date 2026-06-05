@@ -50,12 +50,12 @@ export default function StatsScreen({ resources, health, getTemperature, isConne
     <View style={localStyles.progressContainer}>
       <View style={localStyles.progressHeader}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Ionicons name={icon as any} size={18} color={color || colors.primary} />
+          <Ionicons name={icon as any} size={16} color={color || colors.primary} />
           <Text style={[localStyles.progressLabel, { color: colors.foreground }]}>{label}</Text>
         </View>
         <Text style={[localStyles.progressValue, { color: color || colors.primary }]}>{Math.round(value)}%</Text>
       </View>
-      <View style={[localStyles.progressTrack, { backgroundColor: colors.glassBorder }]}>
+      <View style={[localStyles.progressTrack, { backgroundColor: colors.secondary }]}>
         <View style={[localStyles.progressFill, { width: `${value}%`, backgroundColor: color || colors.primary }]} />
       </View>
       <Text style={[localStyles.progressSubLabel, { color: colors.textMuted }]}>{subLabel}</Text>
@@ -63,12 +63,12 @@ export default function StatsScreen({ resources, health, getTemperature, isConne
   );
 
   const InfoRow = ({ label, value, icon }: { label: string, value: string, icon: string }) => (
-    <View style={localStyles.infoRow}>
+    <View style={[localStyles.infoRow, { borderBottomColor: colors.glassBorder }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Ionicons name={icon as any} size={16} color={colors.textMuted} />
-        <Text style={{ color: colors.textMuted, fontSize: 13 }}>{label}</Text>
+        <Ionicons name={icon as any} size={15} color={colors.textMuted} />
+        <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '500' }}>{label}</Text>
       </View>
-      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>{value}</Text>
+      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500' }}>{value}</Text>
     </View>
   );
 
@@ -87,7 +87,7 @@ export default function StatsScreen({ resources, health, getTemperature, isConne
           color={cpuLoad > 80 ? '#ef4444' : cpuLoad > 50 ? '#f59e0b' : colors.primary}
         />
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 20 }} />
 
         <ProgressBar 
           value={memPercent} 
@@ -97,7 +97,7 @@ export default function StatsScreen({ resources, health, getTemperature, isConne
           color={memPercent > 90 ? '#ef4444' : colors.primary}
         />
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 20 }} />
 
         <ProgressBar 
           value={diskPercent} 
@@ -145,36 +145,35 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   progressLabel: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '500',
   },
   progressValue: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '600',
   },
   progressTrack: {
-    height: 10,
-    borderRadius: 5,
+    height: 6,
+    borderRadius: 3,
     width: '100%',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: 3,
   },
   progressSubLabel: {
     fontSize: 11,
-    marginTop: 6,
+    marginTop: 4,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 });

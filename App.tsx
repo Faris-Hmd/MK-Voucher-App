@@ -120,7 +120,7 @@ function AppInner() {
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
 
       {/* Top header bar */}
-      <View style={[styles.header, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
         <View style={{ flexDirection: 'column', justifyContent: 'center' }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
             {TAB_TITLES[activeTab]}
@@ -128,7 +128,7 @@ function AppInner() {
           {activeRouter && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Ionicons name="wifi" size={11} color={isConnected ? colors.primary : colors.textMuted} />
-              <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>
+              <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
                 {activeRouter.name || activeRouter.ip}
               </Text>
               
@@ -138,7 +138,7 @@ function AppInner() {
         
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {isConnected !== null && (
-            <View style={[styles.statusBadge, { backgroundColor: isConnected ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)' }]}>
+            <View style={[styles.statusBadge, { backgroundColor: isConnected ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={[styles.statusDot, { backgroundColor: isConnected ? '#22c55e' : '#ef4444' }]} />
                 <Text style={[styles.statusText, { color: isConnected ? '#22c55e' : '#ef4444' }]}>
@@ -148,47 +148,47 @@ function AppInner() {
             </View>
           )}
           <TouchableOpacity onPress={() => setShowHelp(true)} style={styles.helpBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="help-circle-outline" size={26} color={colors.primary} />
+            <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Second bar for system resources */}
       {isConnected && resources && (
-        <View style={[styles.subHeader, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
+        <View style={[styles.subHeader, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
           <View style={styles.resourceItem}>
-            <Ionicons name="people" size={14} color="#22c55e" />
+            <Ionicons name="people" size={13} color="#22c55e" />
             <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              Online: <Text style={{ fontWeight: '400' }}>{onlineCount}</Text>
+              Online: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{onlineCount}</Text>
             </Text>
           </View>
 
           <View style={styles.resourceItem}>
-            <Ionicons name="hardware-chip-outline" size={14} color={colors.primary} />
+            <Ionicons name="hardware-chip-outline" size={13} color={colors.primary} />
             <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              CPU: <Text style={{ fontWeight: '400' }}>{resources['cpu-load']}%</Text>
+              CPU: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{resources['cpu-load']}%</Text>
             </Text>
           </View>
           
           <View style={styles.resourceItem}>
-            <Ionicons name="pie-chart-outline" size={14} color={colors.primary} />
+            <Ionicons name="pie-chart-outline" size={13} color={colors.primary} />
             <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              RAM: <Text style={{ fontWeight: '400' }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
+              RAM: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
             </Text>
           </View>
 
           <View style={styles.resourceItem}>
-            <Ionicons name="time-outline" size={14} color={colors.primary} />
+            <Ionicons name="time-outline" size={13} color={colors.primary} />
             <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              Up: <Text style={{ fontWeight: '400' }}>{formatUptimeAPI(resources['uptime'])}</Text>
+              Up: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{formatUptimeAPI(resources['uptime'])}</Text>
             </Text>
           </View>
 
           {getTemperature() && (
             <View style={styles.resourceItem}>
-              <Ionicons name="thermometer-outline" size={14} color="#ef4444" />
+              <Ionicons name="thermometer-outline" size={13} color="#ef4444" />
               <Text style={[styles.resourceText, { color: colors.foreground }]}>
-                <Text style={{ fontWeight: '400' }}>{getTemperature()}°C</Text>
+                <Text style={{ fontWeight: '400', color: colors.textMuted }}>{getTemperature()}°C</Text>
               </Text>
             </View>
           )}
@@ -197,10 +197,10 @@ function AppInner() {
 
       {/* Third bar for model name */}
       {isConnected && resources?.['board-name'] && (
-        <View style={[styles.modelBar, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder }]}>
-          <Ionicons name="cube-outline" size={14} color={colors.primary} />
+        <View style={[styles.modelBar, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
+          <Ionicons name="cube-outline" size={13} color={colors.primary} />
           <Text style={[styles.modelText, { color: colors.foreground }]}>
-            Device: <Text style={{ fontWeight: '400' }}>{resources['board-name']}</Text>
+            Device: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{resources['board-name']}</Text>
           </Text>
         </View>
       )}
@@ -234,9 +234,9 @@ function AppInner() {
 
       {/* Bottom Navigation Bar */}
       <View style={[styles.bottomBar, {
-        backgroundColor: colors.cardBg,
+        backgroundColor: colors.background,
         borderTopColor: colors.glassBorder,
-        paddingBottom: insets.bottom + 8,
+        paddingBottom: insets.bottom + 12,
       }]}>
         {tabs.map((tab, index) => {
           const active = activeTab === tab.key;
@@ -248,7 +248,7 @@ function AppInner() {
             >
               <Ionicons
                 name={tab.icon as any}
-                size={24}
+                size={22}
                 color={active ? colors.primary : colors.textMuted}
               />
               <Text style={[styles.tabText, { color: active ? colors.primary : colors.textMuted }]}>
@@ -268,10 +268,10 @@ function AppInner() {
       >
         <View style={{ flex: 1, backgroundColor: colors.background }}>
           {/* Modal header */}
-          <View style={[styles.modalHeader, { backgroundColor: colors.cardBg, borderBottomColor: colors.glassBorder, paddingTop: insets.top || 16 }]}>
+          <View style={[styles.modalHeader, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder, paddingTop: insets.top || 16 }]}>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>Setup Guide</Text>
             <TouchableOpacity onPress={() => setShowHelp(false)} style={styles.helpBtn}>
-              <Ionicons name="close-circle-outline" size={26} color={colors.textMuted} />
+              <Ionicons name="close-circle-outline" size={24} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
           <HelpScreen />
@@ -383,28 +383,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
   },
   helpBtn: {
     padding: 2,
   },
   bottomBar: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
     justifyContent: 'space-around',
   },
   tabButton: {
@@ -413,17 +413,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabText: {
-    fontWeight: '600',
-    fontSize: 11,
-    marginTop: 4,
+    fontWeight: '500',
+    fontSize: 10,
+    marginTop: 2,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     marginLeft: 4,
   },
   statusDot: {
@@ -432,17 +432,16 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontSize: 9,
+    fontWeight: '600',
   },
   subHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   resourceItem: {
     flexDirection: 'row',
@@ -450,19 +449,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   resourceText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '500',
   },
   modelBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   modelText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '500',
   },
 });

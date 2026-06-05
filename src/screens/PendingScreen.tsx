@@ -28,13 +28,10 @@ export default function PendingScreen({ email }: PendingScreenProps) {
 
   return (
     <View style={[styles.container, localStyles.container]}>
-      {/* Background decoration circle */}
-      <View style={[localStyles.glowCircle, { backgroundColor: '#eab308', top: '30%', alignSelf: 'center' }]} />
-
       <View style={[styles.card, localStyles.pendingCard]}>
         <View style={localStyles.headerContainer}>
-          <View style={[localStyles.iconWrapper, { backgroundColor: 'rgba(234, 179, 8, 0.15)', borderColor: 'rgba(234, 179, 8, 0.3)' }]}>
-            <Ionicons name="time-outline" size={40} color="#eab308" />
+          <View style={[localStyles.iconWrapper, { backgroundColor: 'rgba(234, 179, 8, 0.06)', borderColor: 'rgba(234, 179, 8, 0.15)' }]}>
+            <Ionicons name="time-outline" size={32} color="#eab308" />
           </View>
           <Text style={[localStyles.title, { color: colors.foreground }]}>Access Restricted</Text>
           <Text style={[localStyles.subtitle, { color: '#eab308' }]}>
@@ -49,21 +46,21 @@ export default function PendingScreen({ email }: PendingScreenProps) {
         </Text>
 
         <View style={[localStyles.emailBadge, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
-          <Ionicons name="mail-outline" size={16} color={colors.primary} />
+          <Ionicons name="mail-outline" size={14} color={colors.primary} />
           <Text style={[localStyles.emailText, { color: colors.foreground }]} numberOfLines={1}>
             {email || 'No email address'}
           </Text>
         </View>
 
         <Text style={[localStyles.instructionText, { color: colors.textMuted }]}>
-          Please share your email with the administrator to request access. The screen will automatically unlock once approved.
+          Please share your email with the administrator to request access. The screen will unlock once approved.
         </Text>
 
         <TouchableOpacity
           style={[
             styles.button,
             localStyles.signOutButton,
-            { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.glassBorder },
+            { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.glassBorder },
             loading && styles.buttonDisabled
           ]}
           onPress={handleSignOut}
@@ -74,7 +71,7 @@ export default function PendingScreen({ email }: PendingScreenProps) {
             <ActivityIndicator color={colors.foreground} />
           ) : (
             <View style={localStyles.buttonContent}>
-              <Ionicons name="log-out-outline" size={20} color={colors.foreground} />
+              <Ionicons name="log-out-outline" size={18} color={colors.foreground} />
               <Text style={[localStyles.buttonText, { color: colors.foreground }]}>
                 Sign Out / Use Other Account
               </Text>
@@ -91,88 +88,77 @@ const localStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  glowCircle: {
-    position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    opacity: 0.08,
   },
   pendingCard: {
     width: '100%',
-    maxWidth: 400,
-    padding: 30,
+    maxWidth: 360,
+    padding: 24,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 3,
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   iconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '600',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '500',
     marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 0.5,
   },
   divider: {
     height: 1,
     width: '100%',
-    marginVertical: 10,
+    marginVertical: 12,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 18,
     marginVertical: 12,
   },
   emailBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    marginVertical: 12,
+    marginVertical: 8,
     maxWidth: '100%',
   },
   emailText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
   },
   instructionText: {
-    fontSize: 12,
+    fontSize: 11,
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 25,
-    fontStyle: 'italic',
+    lineHeight: 16,
+    marginBottom: 20,
   },
   signOutButton: {
     width: '100%',
-    height: 50,
+    height: 48,
     justifyContent: 'center',
     marginTop: 5,
   },
@@ -180,10 +166,10 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
   },
   buttonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

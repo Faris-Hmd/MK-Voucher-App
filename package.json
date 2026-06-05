@@ -7,9 +7,12 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "rel": "expo run:android --variant release",
-    "prebuild": "expo prebuild",
-    "prebuild:clean": "expo prebuild --clean",
-    "wadb": "adb connect 192.168.1.146:36295"
+    "prebuild": "expo prebuild --platform android",
+    "prebuild:clean": "expo prebuild --clean --platform android",
+    "wadb": "adb connect 192.168.1.146:36295",
+    "apk": "npm run prebuild && cd android && ./gradlew assembleRelease",
+    "apk:debug": "npm run prebuild && cd android && ./gradlew assembleDebug",
+    "local": "eas build --platform android --local --profile preview"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
