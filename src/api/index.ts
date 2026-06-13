@@ -7,9 +7,9 @@ const btoa = (input: string) => {
   let output = '';
 
   for (let block = 0, charCode, i = 0, map = chars;
-  str.charAt(i | 0) || (map = '=', i % 1);
-  output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
-    charCode = str.charCodeAt(i += 3/4);
+    str.charAt(i | 0) || (map = '=', i % 1);
+    output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
+    charCode = str.charCodeAt(i += 3 / 4);
     if (charCode > 0xFF) {
       throw new Error("'btoa' failed: The string to be encoded contains characters outside of the Latin1 range.");
     }
@@ -21,7 +21,7 @@ const btoa = (input: string) => {
 const getAuthHeaders = async () => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured. Please go to Settings.");
-  
+
   const auth = btoa(`${config.user}:${config.pass}`);
   return {
     'Authorization': `Basic ${auth}`,
@@ -35,7 +35,7 @@ const getAuthHeaders = async () => {
 const getBaseUrl = async () => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured.");
-  
+
   let ip = config.ip.trim();
   if (!ip.startsWith('http://') && !ip.startsWith('https://')) {
     ip = `http://${ip}`;
@@ -72,7 +72,24 @@ export const fetchProfilesAPI = async () => {
     throw new Error(`Failed to fetch profiles (${res.status}): ${txt.substring(0, 100)}`);
   }
   const data = await res.json();
-  return data.filter((p: any) => p.name !== 'default') as Array<{ '.id': string; name: string; [key: string]: any }>;
+  console.log("FETCHED_PROFILES_DATA:", JSON.stringify(data));
+
+  const parsedData = data.map((p: any) => {
+    let comment = p.comment || '';
+    const onLogin = p['on-login'] || '';
+    if (onLogin.includes('#METADATA:')) {
+      const match = onLogin.match(/#METADATA:([^\r\n]+)/);
+      if (match) {
+        comment = match[1];
+      }
+    }
+    return {
+      ...p,
+      comment
+    };
+  });
+
+  return parsedData.filter((p: any) => p.name !== 'default') as Array<{ '.id': string; name: string;[key: string]: any }>;
 };
 
 export const getProfileNamesAPI = async (): Promise<string[]> => {
@@ -112,135 +129,157 @@ const parseValidity = (validity: string) => {
   const daysMatch = validity.match(/(\d+)d/);
   const hoursMatch = validity.match(/(\d+)h/);
   const minsMatch = validity.match(/(\d+)m/);
-  
+
   const days = daysMatch ? parseInt(daysMatch[1]) : 0;
   const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
   const mins = minsMatch ? parseInt(minsMatch[1]) : 0;
-  
+
   const hh = String(hours).padStart(2, '0');
   const mm = String(mins).padStart(2, '0');
-  
+
   return { days, time: `${hh}:${mm}:00` };
 };
 
 export const generateProfileScript = (validity: string) => {
+  if (validity === 'unlimited') {
+    return '';
+  }
   const { days, time } = parseValidity(validity);
-  
+
   return `# --- 1. Declare All Variables ---\r\n` +
-         `:local addDays ${days};\r\n` +
-         `:local addHours ${time};\r\n` +
-         `:local userNow $user;\r\n` +
-         `:local schedName ("kill_" . $userNow);\r\n` +
-         `:local existingSched;\r\n` +
-         `:local dateNow;\r\n` +
-         `:local timeNow;\r\n` +
-         `:local finalTime;\r\n` +
-         `:local year;\r\n` +
-         `:local month;\r\n` +
-         `:local day;\r\n` +
-         `:local daysInMonth;\r\n` +
-         `:local newDay;\r\n` +
-         `:local newMonth;\r\n` +
-         `:local newYear;\r\n` +
-         `:local dim;\r\n` +
-         `:local finalDay;\r\n` +
-         `:local finalMonth;\r\n` +
-         `:local finalDate;\r\n` +
-         `:local onEventText;\r\n\r\n` +
-         `# --- 2. Check if the task already exists ---\r\n` +
-         `:set existingSched [/system scheduler find name=$schedName];\r\n\r\n` +
-         `:if ([:len $existingSched] > 0) do={\r\n` +
-         `    :log info ("Hotspot: User $userNow relogged. Expiration timer already exists.");\r\n` +
-         `} else={\r\n` +
-         `    # --- 3. First Login Logic ---\r\n` +
-         `    :set dateNow [/system clock get date];\r\n` +
-         `    :set timeNow [/system clock get time];\r\n` +
-         `    :set finalTime ($timeNow + $addHours);\r\n\r\n` +
-         `    # Handle Time Overflows\r\n` +
-         `    :while ($finalTime >= 24:00:00) do={\r\n` +
-         `        :set finalTime ($finalTime - 24:00:00);\r\n` +
-         `        :set addDays ($addDays + 1);\r\n` +
-         `    };\r\n\r\n` +
-         `    # Parse ISO Date (yyyy-mm-dd)\r\n` +
-         `    :set year [:tonum [:pick $dateNow 0 4]];\r\n` +
-         `    :set month [:tonum [:pick $dateNow 5 7]];\r\n` +
-         `    :set day [:tonum [:pick $dateNow 8 10]];\r\n\r\n` +
-         `    :set daysInMonth [:toarray "31,28,31,30,31,30,31,31,30,31,30,31"];\r\n` +
-         `    :set newDay ($day + $addDays);\r\n` +
-         `    :set newMonth $month;\r\n` +
-         `    :set newYear $year;\r\n\r\n` +
-         `    # Calendar Rollover Math\r\n` +
-         `    :while ($newDay > 0) do={\r\n` +
-         `        :set dim [:tonum [:pick $daysInMonth ($newMonth - 1)]];\r\n` +
-         `        :if ($newMonth = 2 && ($newYear % 4 = 0)) do={ :set dim 29 };\r\n\r\n` +
-         `        :if ($newDay > $dim) do={\r\n` +
-         `            :set newDay ($newDay - $dim);\r\n` +
-         `            :set newMonth ($newMonth + 1);\r\n` +
-         `            :if ($newMonth > 12) do={\r\n` +
-         `                :set newMonth 1;\r\n` +
-         `                :set newYear ($newYear + 1);\r\n` +
-         `            };\r\n` +
-         `        } else={\r\n` +
-         `            # Format Final Date and Create Scheduler\r\n` +
-         `            :set finalDay [:pick (100 + $newDay) 1 3];\r\n` +
-         `            :set finalMonth [:pick (100 + $newMonth) 1 3];\r\n` +
-         `            :set finalDate ($newYear . "-" . $finalMonth . "-" . $finalDay);\r\n` +
-         `            \r\n` +
-         `            # String concatenation for the on-event\r\n` +
-         `            :set onEventText ("/ip hotspot active remove [find user=$userNow]; /ip hotspot user remove [find name=$userNow]; /system scheduler remove [find name=$schedName]");\r\n` +
-         `            \r\n` +
-         `            /system scheduler add name=$schedName start-date=$finalDate start-time=$finalTime interval=0s on-event=$onEventText;\r\n` +
-         `            \r\n` +
-         `            # Save expiration in comment for the status page timer\r\n` +
-         `            :local currentComment [/ip hotspot user get [find name=$userNow] comment];\r\n` +
-         `            /ip hotspot user set [find name=$userNow] comment=($currentComment . \" | EXP:\" . $finalDate . \" \" . $finalTime);\r\n` +
-         `            \r\n` +
-         `            :log info (\"Hotspot: First Login. Voucher $userNow set to die on $finalDate at $finalTime\");\r\n` +
-         `            :set newDay 0;\r\n` +
-         `        };\r\n` +
-         `    };\r\n` +
-         `}`;
+    `:local addDays ${days};\r\n` +
+    `:local addHours ${time};\r\n` +
+    `:local userNow $user;\r\n` +
+    `:local schedName ("kill_" . $userNow);\r\n` +
+    `:local existingSched;\r\n` +
+    `:local dateNow;\r\n` +
+    `:local timeNow;\r\n` +
+    `:local finalTime;\r\n` +
+    `:local year;\r\n` +
+    `:local month;\r\n` +
+    `:local day;\r\n` +
+    `:local daysInMonth;\r\n` +
+    `:local newDay;\r\n` +
+    `:local newMonth;\r\n` +
+    `:local newYear;\r\n` +
+    `:local dim;\r\n` +
+    `:local finalDay;\r\n` +
+    `:local finalMonth;\r\n` +
+    `:local finalDate;\r\n` +
+    `:local onEventText;\r\n\r\n` +
+    `# --- 2. Check if the task already exists ---\r\n` +
+    `:set existingSched [/system scheduler find name=$schedName];\r\n\r\n` +
+    `:if ([:len $existingSched] > 0) do={\r\n` +
+    `    :log info ("Hotspot: User $userNow relogged. Expiration timer already exists.");\r\n` +
+    `} else={\r\n` +
+    `    # --- 3. First Login Logic ---\r\n` +
+    `    :set dateNow [/system clock get date];\r\n` +
+    `    :set timeNow [/system clock get time];\r\n` +
+    `    :set finalTime ($timeNow + $addHours);\r\n\r\n` +
+    `    # Handle Time Overflows\r\n` +
+    `    :while ($finalTime >= 24:00:00) do={\r\n` +
+    `        :set finalTime ($finalTime - 24:00:00);\r\n` +
+    `        :set addDays ($addDays + 1);\r\n` +
+    `    };\r\n\r\n` +
+    `    # Parse ISO Date (yyyy-mm-dd)\r\n` +
+    `    :set year [:tonum [:pick $dateNow 0 4]];\r\n` +
+    `    :set month [:tonum [:pick $dateNow 5 7]];\r\n` +
+    `    :set day [:tonum [:pick $dateNow 8 10]];\r\n\r\n` +
+    `    :set daysInMonth [:toarray "31,28,31,30,31,30,31,31,30,31,30,31"];\r\n` +
+    `    :set newDay ($day + $addDays);\r\n` +
+    `    :set newMonth $month;\r\n` +
+    `    :set newYear $year;\r\n\r\n` +
+    `    # Calendar Rollover Math\r\n` +
+    `    :while ($newDay > 0) do={\r\n` +
+    `        :set dim [:tonum [:pick $daysInMonth ($newMonth - 1)]];\r\n` +
+    `        :if ($newMonth = 2 && ($newYear % 4 = 0)) do={ :set dim 29 };\r\n\r\n` +
+    `        :if ($newDay > $dim) do={\r\n` +
+    `            :set newDay ($newDay - $dim);\r\n` +
+    `            :set newMonth ($newMonth + 1);\r\n` +
+    `            :if ($newMonth > 12) do={\r\n` +
+    `                :set newMonth 1;\r\n` +
+    `                :set newYear ($newYear + 1);\r\n` +
+    `            };\r\n` +
+    `        } else={\r\n` +
+    `            # Format Final Date and Create Scheduler\r\n` +
+    `            :set finalDay [:pick (100 + $newDay) 1 3];\r\n` +
+    `            :set finalMonth [:pick (100 + $newMonth) 1 3];\r\n` +
+    `            :set finalDate ($newYear . "-" . $finalMonth . "-" . $finalDay);\r\n` +
+    `            \r\n` +
+    `            # String concatenation for the on-event\r\n` +
+    `            :set onEventText ("/ip hotspot active remove [find user=$userNow]; /ip hotspot user remove [find name=$userNow]; /system scheduler remove [find name=$schedName]");\r\n` +
+    `            \r\n` +
+    `            /system scheduler add name=$schedName start-date=$finalDate start-time=$finalTime interval=0s on-event=$onEventText;\r\n` +
+    `            \r\n` +
+    `            # Save expiration in comment for the status page timer\r\n` +
+    `            :local currentComment [/ip hotspot user get [find name=$userNow] comment];\r\n` +
+    `            /ip hotspot user set [find name=$userNow] comment=($currentComment . \" | EXP:\" . $finalDate . \" \" . $finalTime);\r\n` +
+    `            \r\n` +
+    `            :log info (\"Hotspot: First Login. Voucher $userNow set to die on $finalDate at $finalTime\");\r\n` +
+    `            :set newDay 0;\r\n` +
+    `        };\r\n` +
+    `    };\r\n` +
+    `}`;
 };
 
-export const createProfileAPI = async (name: string, validity: string) => {
+export const createProfileAPI = async (name: string, validity: string, limitMB?: number, isUnlimited?: boolean, printLabel?: string) => {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  
-  const script = generateProfileScript(validity);
-  
-  const body = {
+
+  const parts: string[] = [];
+  if (limitMB !== undefined && limitMB > 0) {
+    parts.push(`LIMIT:${limitMB}`);
+  }
+  if (isUnlimited) {
+    parts.push(`END_BY_USAGE:true`);
+  }
+  if (printLabel && printLabel.trim()) {
+    parts.push(`PRINT_LABEL:${printLabel.trim()}`);
+  }
+
+  const metadataComment = parts.length > 0 ? `#METADATA:${parts.join('|')}\r\n` : '';
+  const script = metadataComment + (isUnlimited ? '' : generateProfileScript(validity));
+
+  const body: any = {
     name,
-    "shared-users": "1",
-    "on-login": script
+    "shared-users": "1"
   };
-  
+
+  if (script) {
+    body["on-login"] = script;
+  }
+
+  console.log("SENDING_CREATE_PROFILE_BODY:", JSON.stringify(body));
+
   const res = await fetch(`${baseUrl}/rest/ip/hotspot/user/profile/add`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body)
   });
-  
+
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(`Failed to create profile (${res.status}): ${txt.substring(0, 100)}`);
+    console.error("CREATE_PROFILE_ERROR_BODY:", txt);
+    throw new Error(`Failed to create profile (${res.status}): ${txt}`);
   }
+
   return await res.json();
 };
 
-export const createVouchersAPI = async (profile: string, count: number, length: number, comment?: string) => {
+export const createVouchersAPI = async (profile: string, count: number, length: number, comment?: string, limitBytesTotal?: number) => {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  
+
   // 1. Fetch all existing vouchers to ensure uniqueness
   const existingUsers = await fetchVouchersAPI();
   const existingNames = new Set((existingUsers || []).map((u: any) => u.name).filter(Boolean));
-  
+
   // 2. Generate unique PINs
   const generatedPins: string[] = [];
   const generatedSet = new Set<string>();
   let attempts = 0;
   const maxAttempts = count * 10;
-  
+
   while (generatedPins.length < count && attempts < maxAttempts) {
     const pin = generateRandomString(length);
     if (!existingNames.has(pin) && !generatedSet.has(pin)) {
@@ -249,22 +288,23 @@ export const createVouchersAPI = async (profile: string, count: number, length: 
     }
     attempts++;
   }
-  
+
   if (generatedPins.length < count) {
     throw new Error(`Could only generate ${generatedPins.length} unique vouchers. Try increasing voucher length.`);
   }
-  
+
   // 3. Chunk the PINs to avoid "Payload Too Large" on RouterOS REST API
   const chunks = chunkArray(generatedPins, 250);
-  
+
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     const scriptLines = chunk.map(pin => {
-      return `/ip hotspot user add name="${pin}" password="${pin}" profile="${profile}" server="all"${comment ? ` comment="${comment}"` : ''}`;
+      const limitPart = limitBytesTotal ? ` limit-bytes-total=${limitBytesTotal}` : '';
+      return `/ip hotspot user add name="${pin}" password="${pin}" profile="${profile}" server="all"${limitPart}${comment ? ` comment="${comment}"` : ''}`;
     });
     const scriptSource = scriptLines.join("\r\n");
     const scriptName = `tmp_vxs_${Date.now()}_${i}`;
-    
+
     // 4. Create the script on the router
     const addRes = await fetch(`${baseUrl}/rest/system/script/add`, {
       method: 'POST',
@@ -274,15 +314,15 @@ export const createVouchersAPI = async (profile: string, count: number, length: 
         source: scriptSource
       })
     });
-    
+
     if (!addRes.ok) {
       const txt = await addRes.text();
       throw new Error(`Failed to upload script to router (${addRes.status}): ${txt.substring(0, 100)}`);
     }
-    
+
     const scriptData = await addRes.json();
     const scriptId = scriptData?.['.id'] || scriptName;
-    
+
     // 5. Run the script on the router
     let runOk = false;
     let runErrorMsg = '';
@@ -302,7 +342,7 @@ export const createVouchersAPI = async (profile: string, count: number, length: 
     } catch (err: any) {
       runErrorMsg = err.message || "Network error running script";
     }
-    
+
     // 6. Delete the script from the router
     try {
       const removeRes = await fetch(`${baseUrl}/rest/system/script/remove`, {
@@ -318,20 +358,20 @@ export const createVouchersAPI = async (profile: string, count: number, length: 
     } catch (e) {
       console.warn(`Failed to remove script ${scriptName}`, e);
     }
-    
+
     // 7. Verify script execution succeeded
     if (!runOk) {
       throw new Error(`Failed to execute script on router: ${runErrorMsg.substring(0, 100)}`);
     }
   }
-  
+
   return generatedPins;
 };
 
 export const fetchVouchersAPI = async () => {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  const res = await fetch(`${baseUrl}/rest/ip/hotspot/user?.proplist=.id,name,profile,comment`, { headers });
+  const res = await fetch(`${baseUrl}/rest/ip/hotspot/user?.proplist=.id,name,profile,comment,limit-bytes-total`, { headers });
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`Failed to fetch users (${res.status}): ${txt.substring(0, 100)}`);
@@ -341,19 +381,19 @@ export const fetchVouchersAPI = async () => {
 
 export const deleteVouchersAPI = async (ids: string[]) => {
   if (!ids || ids.length === 0) return;
-  
+
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
-  
+
   // 1. Chunk the IDs to avoid "Payload Too Large" on RouterOS REST API
   const chunks = chunkArray(ids, 250);
-  
+
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     const scriptLines = chunk.map(id => `:do { /ip hotspot user remove "${id}" } on-error={}`);
     const scriptSource = scriptLines.join("\r\n");
     const scriptName = `tmp_delete_${Date.now()}_${i}`;
-    
+
     // 2. Create the script on the router
     const addRes = await fetch(`${baseUrl}/rest/system/script/add`, {
       method: 'POST',
@@ -363,15 +403,15 @@ export const deleteVouchersAPI = async (ids: string[]) => {
         source: scriptSource
       })
     });
-    
+
     if (!addRes.ok) {
       const txt = await addRes.text();
       throw new Error(`Failed to upload delete script to router (${addRes.status}): ${txt.substring(0, 100)}`);
     }
-    
+
     const scriptData = await addRes.json();
     const scriptId = scriptData?.['.id'] || scriptName;
-    
+
     // 3. Run the script on the router
     let runOk = false;
     let runErrorMsg = '';
@@ -391,7 +431,7 @@ export const deleteVouchersAPI = async (ids: string[]) => {
     } catch (err: any) {
       runErrorMsg = err.message || "Network error running delete script";
     }
-    
+
     // 4. Delete the script from the router
     try {
       const removeRes = await fetch(`${baseUrl}/rest/system/script/remove`, {
@@ -407,7 +447,7 @@ export const deleteVouchersAPI = async (ids: string[]) => {
     } catch (e) {
       console.warn(`Failed to remove delete script ${scriptName}`, e);
     }
-    
+
     // 5. Verify script execution succeeded
     if (!runOk) {
       throw new Error(`Failed to execute delete script on router: ${runErrorMsg.substring(0, 100)}`);
@@ -424,7 +464,7 @@ export const fetchHotspotServerAPI = async () => {
     throw new Error(`Failed to fetch hotspot servers (${res.status}): ${txt.substring(0, 100)}`);
   }
   const data = await res.json();
-  return data as Array<{ '.id': string; name: string; disabled: string; [key: string]: any }>;
+  return data as Array<{ '.id': string; name: string; disabled: string;[key: string]: any }>;
 };
 
 export const toggleHotspotServerAPI = async (id: string, disabled: boolean) => {
@@ -450,7 +490,7 @@ export const fetchInterfacesAPI = async () => {
     throw new Error(`Failed to fetch interfaces (${res.status}): ${txt.substring(0, 100)}`);
   }
   const data = await res.json();
-  return data as Array<{ name: string; type: string; [key: string]: any }>;
+  return data as Array<{ name: string; type: string;[key: string]: any }>;
 };
 
 export const fetchHotspotServerProfilesAPI = async () => {
@@ -496,7 +536,7 @@ export const createHotspotServerAPI = async (name: string, iface: string, server
       "profile": serverProfile
     }),
   });
-  
+
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`Failed to create hotspot server (${res.status}): ${txt.substring(0, 100)}`);
@@ -600,20 +640,20 @@ export const fetchSchedulersAPI = async () => {
 
 export const formatUptimeAPI = (uptime: string): string => {
   if (!uptime || uptime === '0s' || uptime === '00:00:00' || uptime === 'Offline') return uptime === 'Offline' ? 'Offline' : '0m';
-  
+
   // MikroTik formats: "1d02:03:04", "02:03:04", "05:10", "1w2d..."
   // We want to extract Days, Hours, Minutes and ignore Seconds.
-  
+
   let totalMins = 0;
-  
+
   // Weeks
   const weekMatch = uptime.match(/(\d+)w/);
   if (weekMatch) totalMins += parseInt(weekMatch[1]) * 7 * 24 * 60;
-  
+
   // Days
   const dayMatch = uptime.match(/(\d+)d/);
   if (dayMatch) totalMins += parseInt(dayMatch[1]) * 24 * 60;
-  
+
   // Time part (HH:MM:SS or MM:SS)
   const timePart = uptime.match(/(\d{1,2}:){1,2}\d{1,2}/);
   if (timePart) {
@@ -641,6 +681,16 @@ export const formatUptimeAPI = (uptime: string): string => {
   if (d > 0) res += `${d}d `;
   if (h > 0) res += `${h}h `;
   if (m > 0 || res === '') res += `${m}m`;
-  
+
   return res.trim();
+};
+
+export const fetchSystemClockAPI = async () => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/system/clock`, { headers });
+  if (!res.ok) {
+    throw new Error("Failed to fetch system clock");
+  }
+  return await res.json();
 };

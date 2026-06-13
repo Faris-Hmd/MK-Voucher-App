@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, StyleSheet } from 'react-native';
 import { useTheme } from '../ThemeContext';
-import { fetchVouchersAPI, deleteVouchersAPI, fetchActiveSessionsAPI, fetchSchedulersAPI, formatUptimeAPI } from '../api';
+import { fetchVouchersAPI, deleteVouchersAPI, fetchActiveSessionsAPI, fetchSchedulersAPI, formatUptimeAPI, fetchSystemClockAPI, fetchProfilesAPI } from '../api';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -9,9 +9,35 @@ import { loadConfig } from '../store';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
+
 const getNormalizedComment = (comment: string | null | undefined): string => {
   const raw = comment || 'Old / Unknown';
   return raw.split(' | EXP:')[0];
+};
+
+const formatBatchTime = (comment: string | null | undefined): string => {
+  if (!comment) return 'Legacy Vouchers';
+  const clean = comment.split(' | ')[0];
+  const match = clean.match(/^vc-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [_, y, m, d, hr, min] = match;
+    return `${y}-${m}-${d} ${hr}:${min}`;
+  }
+  if (clean === 'Old / Unknown') {
+    return 'Legacy Vouchers';
+  }
+  return clean;
+};
+
+const getGBString = (limitBytesStr: any): string => {
+  if (!limitBytesStr) return '';
+  const bytes = parseInt(limitBytesStr);
+  if (isNaN(bytes) || bytes <= 0) return '';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb < 0.1) {
+    return `${parseFloat(gb.toFixed(2))} GB`;
+  }
+  return `${parseFloat(gb.toFixed(1))} GB`;
 };
 
 export default function ListScreen() {
@@ -21,11 +47,61 @@ export default function ListScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [printingGroup, setPrintingGroup] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<any[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [schedulers, setSchedulers] = useState<any[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [routerTimeOffset, setRouterTimeOffset] = useState<number>(0);
+
+  const parseRouterTimeOffset = (clock: any): number => {
+    if (!clock || !clock.date || !clock.time) return 0;
+    try {
+      let year = new Date().getFullYear();
+      let month = new Date().getMonth();
+      let day = new Date().getDate();
+      
+      const parts = clock.date.split(/[\/\-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10) - 1;
+          day = parseInt(parts[2], 10);
+        } else {
+          const months: Record<string, number> = {
+            jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+            jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+          };
+          let monthIdx = -1, yearIdx = -1, dayIdx = -1;
+          parts.forEach((p: string, idx: number) => {
+            const clean = p.toLowerCase().substring(0, 3);
+            if (months[clean] !== undefined) monthIdx = idx;
+            else if (p.length === 4) yearIdx = idx;
+            else dayIdx = idx;
+          });
+          if (monthIdx !== -1) month = months[parts[monthIdx].toLowerCase().substring(0, 3)];
+          if (yearIdx !== -1) year = parseInt(parts[yearIdx], 10);
+          if (dayIdx !== -1) day = parseInt(parts[dayIdx], 10);
+        }
+      }
+      
+      let hours = 0, minutes = 0, seconds = 0;
+      const timeParts = clock.time.split(':');
+      if (timeParts.length >= 2) {
+        hours = parseInt(timeParts[0], 10);
+        minutes = parseInt(timeParts[1], 10);
+        if (timeParts.length >= 3) seconds = Math.floor(parseFloat(timeParts[2]));
+      }
+      
+      const routerDate = new Date(year, month, day, hours, minutes, seconds);
+      const phoneDate = new Date();
+      return routerDate.getTime() - phoneDate.getTime();
+    } catch (e) {
+      console.error("Error parsing router clock", e);
+      return 0;
+    }
+  };
 
   const getRemainingTime = (session: any, user: any, killSched?: any) => {
     let finalDateStr = '';
@@ -42,7 +118,7 @@ export default function ListScreen() {
     if (finalDateStr) {
       try {
         const expDate = new Date(finalDateStr);
-        const now = new Date();
+        const now = new Date(Date.now() + routerTimeOffset);
         const diffMs = expDate.getTime() - now.getTime();
         if (diffMs <= 0) return 'Expired';
         const diffSecs = Math.floor(diffMs / 1000);
@@ -66,12 +142,18 @@ export default function ListScreen() {
     setIsLoading(true);
     setErrorMsg('');
     try {
-      const [data, activeRaw, schedsRaw] = await Promise.all([
+      const [data, activeRaw, schedsRaw, clockRaw, profilesRaw] = await Promise.all([
         fetchVouchersAPI(),
         fetchActiveSessionsAPI().catch(() => []),
-        fetchSchedulersAPI().catch(() => [])
+        fetchSchedulersAPI().catch(() => []),
+        fetchSystemClockAPI().catch(() => null),
+        fetchProfilesAPI().catch(() => [])
       ]);
       setRawData(data);
+      if (clockRaw) {
+        setRouterTimeOffset(parseRouterTimeOffset(clockRaw));
+      }
+      setProfiles(profilesRaw || []);
       
       const active = Array.isArray(activeRaw) ? activeRaw : [];
       const scheds = Array.isArray(schedsRaw) ? schedsRaw : [];
@@ -156,6 +238,44 @@ export default function ListScreen() {
       const config = await loadConfig();
       const printWifiName = config?.wifiName || 'WI-FI ACCESS';
 
+      const profObj = profiles.find(p => p.name === profName);
+      let displayName = profName;
+      if (profObj && profObj.comment) {
+        const parts = profObj.comment.split('|');
+        const labelPart = parts.find((pt: string) => pt.startsWith('PRINT_LABEL:'));
+        if (labelPart) {
+          displayName = labelPart.split(':')[1];
+        }
+      }
+
+      // Chunk availableToPrint by 60
+      const chunks = [];
+      for (let i = 0; i < availableToPrint.length; i += 60) {
+        chunks.push(availableToPrint.slice(i, i + 60));
+      }
+
+      const pagesHtml = chunks.map((chunk, pageIndex) => {
+        const pageNum = pageIndex + 1;
+        const startNum = pageIndex * 60 + 1;
+        const endNum = Math.min((pageIndex + 1) * 60, availableToPrint.length);
+        return `
+  <div class="page">
+    <div class="page-header" dir="auto">
+      <h1 dir="auto">${printWifiName}</h1>
+      <p dir="auto">${displayName} &mdash; Page ${pageNum} of ${chunks.length} &mdash; Vouchers ${startNum}-${endNum}</p>
+    </div>
+    <div class="grid">
+      ${chunk.map(u => `
+      <div class="voucher">
+        <div class="wifi-name" dir="auto">${printWifiName}</div>
+        <div class="profile-name" dir="auto">${displayName}</div>
+        <hr class="divider"/>
+        <div class="code">${u.name}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+      }).join('\n');
+
       const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -167,14 +287,23 @@ export default function ListScreen() {
     body { background: #ffffff; color: #000000; font-family: 'Cairo', 'Plus Jakarta Sans', -apple-system, sans-serif; }
     @page { margin: 8mm; size: A4; }
 
+    .page {
+      page-break-after: always;
+      max-height: 281mm;
+      overflow: hidden;
+    }
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
     .page-header {
       text-align: center;
-      padding-bottom: 10px;
-      margin-bottom: 15px;
-      border-bottom: 2px solid #000000;
+      padding-bottom: 6px;
+      margin-bottom: 10px;
+      border-bottom: 1.5px solid #000000;
     }
     .page-header h1 {
-      font-size: 15pt;
+      font-size: 13pt;
       font-weight: 800;
       color: #000000;
       letter-spacing: 0.5px;
@@ -182,79 +311,69 @@ export default function ListScreen() {
     .page-header p {
       font-size: 8pt;
       color: #000000;
-      margin-top: 3px;
+      margin-top: 2px;
       font-weight: 600;
     }
 
     .grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
-      gap: 6px;
+      gap: 5px;
     }
 
     .voucher {
       background: #ffffff;
-      border: 1.5px solid #000000;
-      border-radius: 6px;
+      border: 1.2px solid #000000;
+      border-radius: 5px;
       display: flex;
       flex-direction: column;
+      justify-content: center;
       text-align: center;
       page-break-inside: avoid;
-      padding: 8px 6px;
+      padding: 6px 4px;
+      height: 24.5mm;
     }
     
     .wifi-name {
       font-size: 6.5pt;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.3px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       color: #000000;
     }
     
     .profile-name {
-      font-size: 7.5pt;
+      font-size: 7pt;
       font-weight: 700;
       color: #000000;
       text-transform: uppercase;
-      margin-bottom: 4px;
-      letter-spacing: 0.3px;
+      margin-bottom: 2px;
+      letter-spacing: 0.2px;
     }
     
     .divider {
       border: none;
-      border-top: 1.5px solid #000000;
-      margin: 4px 0 6px 0;
+      border-top: 1px solid #000000;
+      margin: 3px 0 4px 0;
       width: 100%;
     }
     
     .code {
       font-family: 'Space Grotesk', monospace;
-      font-size: 12pt;
+      font-size: 11pt;
       font-weight: 800;
       color: #000000;
-      letter-spacing: 2.5px;
-      padding: 2px 0;
+      letter-spacing: 2px;
+      padding: 1px 0;
     }
   </style>
 </head>
 <body dir="auto">
-  <div class="page-header" dir="auto">
-    <h1 dir="auto">${printWifiName}</h1>
-    <p dir="auto">${profName} &mdash; ${batchTime} &mdash; ${availableToPrint.length} Vouchers</p>
-  </div>
-  <div class="grid">
-    ${availableToPrint.map(u => `
-    <div class="voucher">
-      <div class="wifi-name" dir="auto">${printWifiName}</div>
-      <div class="profile-name" dir="auto">${profName}</div>
-      <hr class="divider"/>
-      <div class="code">${u.name}</div>
-    </div>`).join('')}
-  </div>
+  ${pagesHtml}
 </body>
 </html>`;
 
@@ -392,12 +511,90 @@ export default function ListScreen() {
             >
               {/* Card Info */}
               <View style={[styles.card, { padding: 12, marginBottom: 16 }]}>
-                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500', marginBottom: 4 }}>
-                  Batch Generated Time
-                </Text>
-                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginBottom: 12 }}>
-                  {selectedBatch.comment.split(' | ')[0]}
-                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500', marginBottom: 4 }}>
+                      Batch Generated Time
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 12 }}>
+                      {(() => {
+                        const fmt = formatBatchTime(selectedBatch.comment);
+                        if (fmt.includes(' ')) {
+                          const [datePart, timePart] = fmt.split(' ');
+                          return (
+                            <>
+                              <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: colors.primary + '10',
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: colors.primary + '25',
+                                gap: 4,
+                              }}>
+                                <Ionicons name="calendar-outline" size={11} color={colors.primary} />
+                                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+                                  {datePart}
+                                </Text>
+                              </View>
+                              <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: colors.primary + '10',
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: colors.primary + '25',
+                                gap: 4,
+                              }}>
+                                <Ionicons name="time-outline" size={11} color={colors.primary} />
+                                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+                                  {timePart}
+                                </Text>
+                              </View>
+                            </>
+                          );
+                        }
+                        return (
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: colors.secondary,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.glassBorder,
+                            gap: 4,
+                          }}>
+                            <Ionicons name="pricetag-outline" size={11} color={colors.foreground} />
+                            <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>
+                              {fmt}
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  </View>
+                  {(() => {
+                    const firstUser = freshUsers[0];
+                    const limitBytes = firstUser?.['limit-bytes-total'] ? parseInt(firstUser['limit-bytes-total']) : 0;
+                    if (limitBytes <= 0) return null;
+                    return (
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500', marginBottom: 4 }}>
+                          Limit
+                        </Text>
+                        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginBottom: 12 }}>
+                          {getGBString(limitBytes)}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                </View>
 
                 {/* Quick Actions inside Card */}
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -647,9 +844,10 @@ export default function ListScreen() {
 
             return (
               <View key={prof} style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 }}>
-                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>{prof}</Text>
-                  <View style={{ height: StyleSheet.hairlineWidth, flex: 1, backgroundColor: colors.glassBorder, opacity: 0.5 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 14, gap: 12 }}>
+                  <View style={{ height: 1, flex: 1, backgroundColor: colors.glassBorder, opacity: 0.4 }} />
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>{prof}</Text>
+                  <View style={{ height: 1, flex: 1, backgroundColor: colors.glassBorder, opacity: 0.4 }} />
                 </View>
 
                 {/* Profile Overview Badges */}
@@ -686,71 +884,218 @@ export default function ListScreen() {
                   schedulers.some((s: any) => s.name === `kill_${u.name}`)
                 ).length;
                 
+                const formattedTime = formatBatchTime(comment);
+                const firstUser = users[0];
+                const limitBytes = firstUser?.['limit-bytes-total'] ? parseInt(firstUser['limit-bytes-total']) : 0;
+                
                 return (
                   <View key={comment} style={{ 
                     flexDirection: 'row', 
                     alignItems: 'center', 
                     backgroundColor: colors.cardBg, 
-                    paddingVertical: 10, 
-                    paddingHorizontal: 12, 
-                    borderRadius: 12, 
-                    marginBottom: 6,
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: colors.glassBorder
+                    padding: 14, 
+                    borderRadius: 16, 
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: colors.glassBorder,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.04,
+                    shadowRadius: 6,
+                    elevation: 1,
                   }}>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500' }}>{displayTime}</Text>
-                        {activeCount > 0 && (
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' }} />
-                        )}
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
-                        {!isUnknown && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.secondary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ color: colors.textMuted, fontSize: 10 }}>Total: </Text>
-                            <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '500' }}>{originalCount}</Text>
-                          </View>
-                        )}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(34,197,94,0.06)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ color: '#22c55e', fontSize: 10 }}>Unused: </Text>
-                          <Text style={{ color: '#22c55e', fontSize: 11, fontWeight: '500' }}>{remainingCount}</Text>
-                        </View>
-                        {activeCount > 0 && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.06)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ color: '#f59e0b', fontSize: 10 }}>Active: </Text>
-                            <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '500' }}>{activeCount}</Text>
-                          </View>
-                        )}
-                      </View>
+                    {/* Left Icon (List Icon with Total Count) */}
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      backgroundColor: colors.secondary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 12,
+                      borderWidth: 1,
+                      borderColor: colors.glassBorder,
+                    }}>
+                      <Ionicons name="list-outline" size={16} color={colors.primary} style={{ marginBottom: -2 }} />
+                      <Text style={{ color: colors.foreground, fontSize: 10, fontWeight: '800' }}>
+                        {originalCount}
+                      </Text>
                     </View>
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <TouchableOpacity
-                        style={{ backgroundColor: colors.secondary, width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
-                        onPress={() => setSelectedBatch({ profile: prof, comment, users })}
-                      >
-                        <Ionicons name="information-circle-outline" size={18} color={colors.foreground} />
-                      </TouchableOpacity>
+                    {/* Middle Info Area */}
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        {(() => {
+                          if (formattedTime.includes(' ')) {
+                            const [datePart, timePart] = formattedTime.split(' ');
+                            return (
+                                <View style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  backgroundColor: colors.primary + '10',
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 3,
+                                  borderRadius: 8,
+                                  borderWidth: 1,
+                                  borderColor: colors.primary + '25',
+                                  gap: 4,
+                                }}>
+                                  <Ionicons name="calendar-outline" size={11} color={colors.primary} />
+                                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+                                    {datePart}
+                                  </Text>
+                                  <View style={{ width: 1, height: 10, backgroundColor: colors.primary + '25', marginHorizontal: 2 }} />
+                                  <Ionicons name="time-outline" size={11} color={colors.primary} />
+                                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+                                    {timePart}
+                                  </Text>
+                                </View>
+                            );
+                          }
+                          return (
+                            <View style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: colors.secondary,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: colors.glassBorder,
+                              gap: 4,
+                            }}>
+                              <Ionicons name="pricetag-outline" size={11} color={colors.foreground} />
+                              <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>
+                                {formattedTime}
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
 
-                      <TouchableOpacity
-                        style={{ backgroundColor: colors.primary, width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', opacity: printingGroup === groupKey ? 0.6 : 1 }}
-                        onPress={() => handlePrintGroup(prof, comment, users)}
-                        disabled={printingGroup === groupKey}
-                      >
-                        {printingGroup === groupKey
-                          ? <ActivityIndicator color="#fff" size="small" style={{ transform: [{ scale: 0.7 }] }} />
-                          : <Ionicons name={"print" as any} size={15} color="#fff" />
-                        }
-                      </TouchableOpacity>
+                      {/* Stats badges (Active / Data Limits) if any */}
+                      {(activeCount > 0 || limitBytes > 0) && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                          {activeCount > 0 && (
+                            <View style={{ 
+                              flexDirection: 'row', 
+                              alignItems: 'center', 
+                              backgroundColor: 'rgba(245, 158, 11, 0.06)', 
+                              paddingHorizontal: 8, 
+                              paddingVertical: 3, 
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: 'rgba(245,158,11,0.12)'
+                            }}>
+                              <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '500' }}>Active: </Text>
+                              <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '700' }}>{activeCount}</Text>
+                            </View>
+                          )}
+                          {limitBytes > 0 && (
+                            <View style={{ 
+                              flexDirection: 'row', 
+                              alignItems: 'center', 
+                              backgroundColor: 'rgba(59, 130, 246, 0.06)', 
+                              paddingHorizontal: 8, 
+                              paddingVertical: 3, 
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: 'rgba(59, 130, 246, 0.12)'
+                            }}>
+                              <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '500' }}>Limit: </Text>
+                              <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '700' }}>{getGBString(limitBytes)}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
 
-                      <TouchableOpacity
-                        style={{ backgroundColor: 'rgba(220,38,38,0.06)', width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
-                        onPress={() => handleDeleteGroup(`${prof} (${comment})`, users)}
-                        disabled={isDeleting || printingGroup === groupKey}
-                      >
-                        <Ionicons name="trash-outline" size={15} color="#ef4444" />
-                      </TouchableOpacity>
+                    {/* Right Action Container (Usage Info + Action Buttons) */}
+                    <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                      {/* Small Usage Indicator */}
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: remainingCount === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(34, 197, 94, 0.08)',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: remainingCount === 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                        gap: 3,
+                        marginBottom: 6,
+                      }}>
+                        <Ionicons 
+                          name={remainingCount === 0 ? "checkmark-circle" : "pie-chart-outline"} 
+                          size={9} 
+                          color={remainingCount === 0 ? '#ef4444' : '#22c55e'} 
+                        />
+                        <Text style={{ 
+                          color: remainingCount === 0 ? '#ef4444' : '#22c55e', 
+                          fontSize: 9, 
+                          fontWeight: '800' 
+                        }}>
+                          {remainingCount} unused of {originalCount}
+                        </Text>
+                      </View>
+
+                      {/* Buttons Row */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity
+                          style={{ 
+                            backgroundColor: colors.inputBg, 
+                            width: 32, 
+                            height: 32, 
+                            borderRadius: 8, 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            borderWidth: 1,
+                            borderColor: colors.glassBorder
+                          }}
+                          onPress={() => setSelectedBatch({ profile: prof, comment, users })}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="information" size={16} color={colors.foreground} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={{ 
+                            backgroundColor: colors.primary, 
+                            width: 32, 
+                            height: 32, 
+                            borderRadius: 8, 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            opacity: printingGroup === groupKey ? 0.6 : 1 
+                          }}
+                          onPress={() => handlePrintGroup(prof, comment, users)}
+                          disabled={printingGroup === groupKey}
+                          activeOpacity={0.7}
+                        >
+                          {printingGroup === groupKey
+                            ? <ActivityIndicator color="#fff" size="small" style={{ transform: [{ scale: 0.6 }] }} />
+                            : <Ionicons name="print" size={14} color="#fff" />
+                          }
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={{ 
+                            backgroundColor: 'rgba(239,68,68,0.06)', 
+                            width: 32, 
+                            height: 32, 
+                            borderRadius: 8, 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            borderWidth: 1,
+                            borderColor: 'rgba(239,68,68,0.12)'
+                          }}
+                          onPress={() => handleDeleteGroup(`${prof} (${formattedTime})`, users)}
+                          disabled={isDeleting || printingGroup === groupKey}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 );

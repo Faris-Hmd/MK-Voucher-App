@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchActiveSessionsAPI, fetchHostsAPI, removeActiveSessionAPI, fetchVouchersAPI, fetchLeasesAPI, fetchSchedulersAPI, formatUptimeAPI } from '../api';
+import { fetchActiveSessionsAPI, fetchHostsAPI, removeActiveSessionAPI, fetchVouchersAPI, fetchLeasesAPI, fetchSchedulersAPI, formatUptimeAPI, fetchSystemClockAPI } from '../api';
 
 type MonitoringTab = 'active' | 'hosts';
 
@@ -23,6 +23,55 @@ export default function UsersScreen() {
   const [data, setData] = useState<any[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [routerTimeOffset, setRouterTimeOffset] = useState<number>(0);
+
+  const parseRouterTimeOffset = (clock: any): number => {
+    if (!clock || !clock.date || !clock.time) return 0;
+    try {
+      let year = new Date().getFullYear();
+      let month = new Date().getMonth();
+      let day = new Date().getDate();
+      
+      const parts = clock.date.split(/[\/\-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10) - 1;
+          day = parseInt(parts[2], 10);
+        } else {
+          const months: Record<string, number> = {
+            jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+            jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+          };
+          let monthIdx = -1, yearIdx = -1, dayIdx = -1;
+          parts.forEach((p: string, idx: number) => {
+            const clean = p.toLowerCase().substring(0, 3);
+            if (months[clean] !== undefined) monthIdx = idx;
+            else if (p.length === 4) yearIdx = idx;
+            else dayIdx = idx;
+          });
+          if (monthIdx !== -1) month = months[parts[monthIdx].toLowerCase().substring(0, 3)];
+          if (yearIdx !== -1) year = parseInt(parts[yearIdx], 10);
+          if (dayIdx !== -1) day = parseInt(parts[dayIdx], 10);
+        }
+      }
+      
+      let hours = 0, minutes = 0, seconds = 0;
+      const timeParts = clock.time.split(':');
+      if (timeParts.length >= 2) {
+        hours = parseInt(timeParts[0], 10);
+        minutes = parseInt(timeParts[1], 10);
+        if (timeParts.length >= 3) seconds = Math.floor(parseFloat(timeParts[2]));
+      }
+      
+      const routerDate = new Date(year, month, day, hours, minutes, seconds);
+      const phoneDate = new Date();
+      return routerDate.getTime() - phoneDate.getTime();
+    } catch (e) {
+      console.error("Error parsing router clock", e);
+      return 0;
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedItems(prev => {
@@ -36,13 +85,18 @@ export default function UsersScreen() {
   const loadData = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
     try {
-      const [activeRaw, hostsRaw, usersRaw, leasesRaw, schedsRaw] = await Promise.all([
+      const [activeRaw, hostsRaw, usersRaw, leasesRaw, schedsRaw, clockRaw] = await Promise.all([
         fetchActiveSessionsAPI().catch(() => []),
         fetchHostsAPI().catch(() => []),
         fetchVouchersAPI().catch(() => []),
         fetchLeasesAPI().catch(() => []),
-        fetchSchedulersAPI().catch(() => [])
+        fetchSchedulersAPI().catch(() => []),
+        fetchSystemClockAPI().catch(() => null)
       ]);
+
+      if (clockRaw) {
+        setRouterTimeOffset(parseRouterTimeOffset(clockRaw));
+      }
 
       const active = Array.isArray(activeRaw) ? activeRaw : [];
       const hosts = Array.isArray(hostsRaw) ? hostsRaw : [];
@@ -178,7 +232,7 @@ export default function UsersScreen() {
     if (finalDateStr) {
       try {
         const expDate = new Date(finalDateStr);
-        const now = new Date();
+        const now = new Date(Date.now() + routerTimeOffset);
         const diffMs = expDate.getTime() - now.getTime();
         if (diffMs <= 0) return 'Expired';
         const diffSecs = Math.floor(diffMs / 1000);

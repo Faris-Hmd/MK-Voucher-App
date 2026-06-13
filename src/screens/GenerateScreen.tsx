@@ -1,44 +1,115 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert,
-  ScrollView, ActivityIndicator, StyleSheet, Modal
+  ScrollView, ActivityIndicator, StyleSheet, Modal,
 } from 'react-native';
 import { useTheme } from '../ThemeContext';
-import {
-  fetchProfilesAPI, createProfileAPI, deleteProfileAPI,
-  renameProfileAPI, getProfileNamesAPI, createVouchersAPI,
-  generateProfileScript
-} from '../api';
+import { fetchProfilesAPI, createVouchersAPI } from '../api';
 import { Ionicons } from '@expo/vector-icons';
 
 type Profile = { '.id': string; name: string };
-type ViewMode = 'generate' | 'profiles';
 
+interface DropdownOption { label: string; value: string }
+
+// ── Floating dropdown (no internal label) ────────────────────────────────────
+function FloatingDropdown({
+  icon, selected, options, onSelect, placeholder, disabled,
+}: {
+  icon: string; selected: string;
+  options: DropdownOption[]; onSelect: (v: string) => void;
+  placeholder?: string; disabled?: boolean;
+}) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<View>(null);
+
+  const openMenu = () => {
+    if (disabled) return;
+    triggerRef.current?.measureInWindow((x, y, w, h) => {
+      setPos({ top: y + h, left: x, width: w });
+      setOpen(true);
+    });
+  };
+
+  const selectedLabel = options.find(o => o.value === selected)?.label ?? selected;
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View ref={triggerRef}>
+        <TouchableOpacity
+          style={[
+            local.trigger,
+            { backgroundColor: colors.inputBg, borderColor: open ? colors.primary : colors.glassBorder },
+          ]}
+          onPress={openMenu}
+          activeOpacity={0.7}
+        >
+          <Ionicons name={icon as any} size={14} color={colors.textMuted} style={{ marginRight: 7 }} />
+          <Text style={[local.triggerText, { color: selected ? colors.foreground : colors.textMuted, flex: 1 }]}>
+            {selected ? selectedLabel : (placeholder ?? 'Select…')}
+          </Text>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setOpen(false)} />
+        <View style={[
+          local.floatingList,
+          { top: pos.top, left: pos.left, width: pos.width,
+            backgroundColor: colors.cardBg, borderColor: colors.primary },
+        ]}>
+          {options.map((opt, i) => {
+            const active = opt.value === selected;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  local.floatingItem,
+                  { borderBottomColor: colors.glassBorder },
+                  i === options.length - 1 && { borderBottomWidth: 0 },
+                  active && { backgroundColor: colors.primary + '12' },
+                ]}
+                onPress={() => { onSelect(opt.value); setOpen(false); }}
+                activeOpacity={0.7}
+              >
+                <Text style={[local.floatingItemText, { color: active ? colors.primary : colors.foreground }]}>
+                  {opt.label}
+                </Text>
+                {active && <Ionicons name="checkmark" size={15} color={colors.primary} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ── Field label ───────────────────────────────────────────────────────────────
+function FieldLabel({ text, colors }: { text: string; colors: any }) {
+  return <Text style={[local.fieldLabel, { color: colors.textMuted }]}>{text}</Text>;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const LENGTH_OPTIONS: DropdownOption[] = [
+  { label: '5 digits', value: '5' },
+  { label: '6 digits', value: '6' },
+  { label: '7 digits', value: '7' },
+  { label: '8 digits', value: '8' },
+];
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function GenerateScreen() {
   const { colors, styles } = useTheme();
-  const [viewMode, setViewMode] = useState<ViewMode>('generate');
-  
-  // Shared state
+
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Generate State
   const [selectedProfile, setSelectedProfile] = useState<string>('');
   const [voucherCount, setVoucherCount] = useState('50');
   const [voucherLength, setVoucherLength] = useState('6');
   const [isGenerating, setIsGenerating] = useState(false);
-
-  // Profiles State
-  const [isCreating, setIsCreating] = useState(false);
-  const [newProfileName, setNewProfileName] = useState('');
-  const [validityDays, setValidityDays] = useState('0');
-  const [validityHours, setValidityHours] = useState('1');
-  const [validityMinutes, setValidityMinutes] = useState('0');
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
-  const [editName, setEditName] = useState('');
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [scriptModalVisible, setScriptModalVisible] = useState(false);
 
   useEffect(() => { loadProfiles(); }, []);
 
@@ -47,338 +118,210 @@ export default function GenerateScreen() {
     try {
       const p = await fetchProfilesAPI();
       setProfiles(p);
-      if (p.length > 0 && !selectedProfile) {
-        setSelectedProfile(p[0].name);
-      }
-    } catch (e) {
-      console.log('Failed to load profiles');
-    } finally {
-      setIsLoading(false);
-    }
+      if (p.length > 0 && !selectedProfile) setSelectedProfile(p[0].name);
+    } catch { /* silent */ }
+    finally { setIsLoading(false); }
   };
 
   const handleGenerate = async () => {
     if (!selectedProfile) {
-      Alert.alert('Error', 'Please select or create a profile first.');
+      Alert.alert('No Profile', 'Select a profile first. Create one in the Profiles tab.');
       return;
+    }
+    let limitBytesTotal: number | undefined;
+    const selectedProfObj = profiles.find(p => p.name === selectedProfile);
+    if (selectedProfObj && (selectedProfObj as any).comment) {
+      const parts = (selectedProfObj as any).comment.split('|');
+      const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
+      if (limitPart) {
+        const mb = parseInt(limitPart.split(':')[1], 10);
+        if (!isNaN(mb) && mb > 0) {
+          limitBytesTotal = mb * 1024 * 1024;
+        }
+      }
     }
     setIsGenerating(true);
     try {
       const now = new Date();
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const batchComment = `${timestamp} | ${String(voucherCount).padStart(4, '0')}`;
-      
-      const results = await createVouchersAPI(selectedProfile, parseInt(voucherCount), parseInt(voucherLength), batchComment);
-      Alert.alert('Success', `Successfully generated ${results.length} vouchers!`);
+      const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const comment = `${ts} | ${String(voucherCount).padStart(4,'0')}`;
+      const results = await createVouchersAPI(selectedProfile, parseInt(voucherCount), parseInt(voucherLength), comment, limitBytesTotal);
+      Alert.alert('Done!', `Generated ${results.length} vouchers for "${selectedProfile}".`);
     } catch (err: any) {
-      Alert.alert('Generation Failed', err.message || 'Failed to generate vouchers.');
+      Alert.alert('Failed', err.message || 'Could not generate vouchers.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleCreateProfile = async () => {
-    if (!newProfileName || (!validityDays && !validityHours && !validityMinutes)) {
-      Alert.alert('Error', 'Name and at least one validity value are required.');
-      return;
-    }
-    
-    const validity = getValidityString();
-
-    setIsCreating(true);
-    try {
-      await createProfileAPI(newProfileName, validity);
-      setNewProfileName('');
-      setValidityDays('0');
-      setValidityHours('1');
-      setValidityMinutes('0');
-      await loadProfiles();
-      setViewMode('generate'); // Switch back to generate after creating
-    } catch (err: any) {
-      Alert.alert('Error', err.message);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleDeleteProfile = (profile: Profile) => {
-    Alert.alert('Delete Profile', `Delete "${profile.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await deleteProfileAPI(profile['.id']);
-          loadProfiles();
-        } catch (err: any) { Alert.alert('Error', err.message); }
-      }}
-    ]);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editName.trim() || !editingProfile) return;
-    setIsSavingEdit(true);
-    try {
-      await renameProfileAPI(editingProfile['.id'], editName.trim());
-      setEditModalVisible(false);
-      loadProfiles();
-    } catch (err: any) { Alert.alert('Error', err.message); }
-    finally { setIsSavingEdit(false); }
-  };
-
-  const getValidityString = () => {
-    let validity = '';
-    if (validityDays && validityDays !== '0') validity += `${validityDays}d`;
-    if (validityHours && validityHours !== '0') validity += `${validityHours}h`;
-    if (validityMinutes && validityMinutes !== '0') validity += `${validityMinutes}m`;
-    return validity || '1h';
-  };
-
+  const profileOptions: DropdownOption[] = profiles.map(p => ({ label: p.name, value: p.name }));
+  const noProfiles = profiles.length === 0 && !isLoading;
 
   return (
-    <ScrollView 
-      style={[styles.content, { backgroundColor: colors.background }]}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 20 }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
-      {/* Header with Refresh Button */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-        <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '600' }}>Generate Vouchers</Text>
-        <TouchableOpacity onPress={loadProfiles} disabled={isLoading} style={{ padding: 6 }}>
-          {isLoading ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="refresh" size={18} color={colors.primary} />}
-        </TouchableOpacity>
-      </View>
-      
-      {/* View Switcher */}
-      <View style={[localStyles.switcher, { backgroundColor: colors.inputBg }]}>
-        <TouchableOpacity 
-          style={[localStyles.switchBtn, viewMode === 'generate' && { backgroundColor: colors.cardBg }]}
-          onPress={() => setViewMode('generate')}
-        >
-          <Ionicons name="add-circle" size={15} color={viewMode === 'generate' ? colors.primary : colors.textMuted} />
-          <Text style={[localStyles.switchText, { color: viewMode === 'generate' ? colors.foreground : colors.textMuted }]}>Generate</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[localStyles.switchBtn, viewMode === 'profiles' && { backgroundColor: colors.cardBg }]}
-          onPress={() => setViewMode('profiles')}
-        >
-          <Ionicons name="layers" size={15} color={viewMode === 'profiles' ? colors.primary : colors.textMuted} />
-          <Text style={[localStyles.switchText, { color: viewMode === 'profiles' ? colors.foreground : colors.textMuted }]}>Profiles</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={[local.card, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
 
-      {viewMode === 'generate' ? (
-        <View style={[styles.card, { padding: 12 }]}>
-          <Text style={[styles.label, { fontSize: 11, marginBottom: 8 }]}>Select Profile</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}>
-            {profiles.map(p => (
-              <TouchableOpacity
-                key={p['.id']}
-                style={{
-                  backgroundColor: selectedProfile === p.name ? colors.primary : colors.secondary,
-                  paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginRight: 6, marginBottom: 6,
-                }}
-                onPress={() => setSelectedProfile(p.name)}
-              >
-                <Text style={{ color: selectedProfile === p.name ? '#fff' : colors.foreground, fontWeight: '500', fontSize: 12 }}>{p.name}</Text>
-              </TouchableOpacity>
-            ))}
-            {profiles.length === 0 && !isLoading && (
-              <TouchableOpacity onPress={() => setViewMode('profiles')} style={{ padding: 6 }}>
-                <Text style={{ color: colors.primary, fontWeight: '500', fontSize: 12 }}>+ Create First Profile</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { fontSize: 11 }]}>Count</Text>
-              <TextInput 
-                style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]} 
-                value={voucherCount} 
-                onChangeText={setVoucherCount} 
-                keyboardType="numeric" 
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { fontSize: 11 }]}>Length</Text>
-              <TextInput 
-                style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]} 
-                value={voucherLength} 
-                onChangeText={setVoucherLength} 
-                keyboardType="numeric" 
-              />
-            </View>
-          </View>
-
+        {/* ── Profile row ── */}
+        <FieldLabel text="PROFILE" colors={colors} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <FloatingDropdown
+            icon="layers-outline"
+            selected={selectedProfile}
+            options={profileOptions}
+            onSelect={setSelectedProfile}
+            placeholder={isLoading ? 'Loading…' : noProfiles ? 'No profiles yet' : 'Select a profile'}
+            disabled={noProfiles || isLoading}
+          />
+          {/* Refresh button — same height as trigger */}
           <TouchableOpacity
-            style={[styles.button, { paddingVertical: 12, marginTop: 5 }, (!selectedProfile || isGenerating) && styles.buttonDisabled]}
-            onPress={handleGenerate}
-            disabled={!selectedProfile || isGenerating}
+            onPress={loadProfiles}
+            disabled={isLoading}
+            style={[local.refreshBtn, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder }]}
           >
-            {isGenerating ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.buttonText, { fontSize: 14 }]}>Generate Vouchers</Text>}
+            {isLoading
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Ionicons name="refresh" size={16} color={colors.primary} />}
           </TouchableOpacity>
         </View>
-      ) : (
-        <View>
-          {/* Create Profile Section */}
-          <View style={[styles.card, { padding: 12, marginBottom: 12 }]}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 10 }]}>New Profile</Text>
-            <TextInput
-              style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 12 }]}
-              placeholder="Profile Name (e.g. 1 Hour)"
-              placeholderTextColor={colors.textMuted}
-              value={newProfileName}
-              onChangeText={setNewProfileName}
-            />
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Days</Text>
-                <TextInput
-                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
-                  value={validityDays}
-                  onChangeText={setValidityDays}
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Hours</Text>
-                <TextInput
-                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
-                  value={validityHours}
-                  onChangeText={setValidityHours}
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { fontSize: 10, marginBottom: 4 }]}>Minutes</Text>
-                <TextInput
-                  style={[styles.input, { paddingVertical: 10, fontSize: 14, marginBottom: 0 }]}
-                  value={validityMinutes}
-                  onChangeText={setValidityMinutes}
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <TouchableOpacity onPress={() => setScriptModalVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="code-working" size={13} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500' }}>View Script</Text>
-              </TouchableOpacity>
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>
-                Total Validity: <Text style={{ color: colors.primary, fontWeight: '600' }}>
-                  {getValidityString()}
+
+        {/* Profile Details Badge */}
+        {selectedProfile && (() => {
+          const profObj = profiles.find(p => p.name === selectedProfile);
+          if (!profObj || !(profObj as any).comment) return null;
+          
+          const parts = (profObj as any).comment.split('|');
+          const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
+          const endPart = parts.find((pt: string) => pt.startsWith('END_BY_USAGE:'));
+          
+          const limitVal = limitPart ? limitPart.split(':')[1] + ' MB' : 'Unlimited';
+          
+          return (
+            <View style={{ 
+              flexDirection: 'row', 
+              gap: 8, 
+              marginTop: -6,
+              marginBottom: 14
+            }}>
+              <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>
+                  Limit: <Text style={{ color: colors.primary, fontWeight: '700' }}>{limitVal}</Text>
                 </Text>
-              </Text>
-            </View>
-            <TouchableOpacity style={[styles.button, { paddingVertical: 12 }]} onPress={handleCreateProfile} disabled={isCreating}>
-              {isCreating ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.buttonText, { fontSize: 14 }]}>Create Profile</Text>}
-            </TouchableOpacity>
-          </View>
-
-          {/* List Section */}
-          <View style={[styles.card, { padding: 12 }]}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 10 }]}>Manage Profiles</Text>
-            {profiles.map((p, idx) => (
-              <View key={p['.id']} style={[localStyles.profileRow, { borderBottomWidth: idx < profiles.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.glassBorder }]}>
-                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '500', flex: 1 }}>{p.name}</Text>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <TouchableOpacity onPress={() => { setEditingProfile(p); setEditName(p.name); setEditModalVisible(true); }}>
-                    <Ionicons name="pencil" size={14} color={colors.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteProfile(p)}>
-                    <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
               </View>
-            ))}
-          </View>
-        </View>
-      )}
+              {endPart && (
+                <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>
+                    End by usage only: <Text style={{ color: '#22c55e', fontWeight: '700' }}>Yes</Text>
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
-      {/* Edit Modal */}
-      <Modal visible={editModalVisible} transparent animationType="fade">
-        <View style={localStyles.modalOverlay}>
-          <View style={[localStyles.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
-            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginBottom: 12 }}>Rename Profile</Text>
-            <TextInput style={[styles.input, { marginBottom: 16 }]} value={editName} onChangeText={setEditName} autoFocus />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.inputBg, marginTop: 0 }]} onPress={() => setEditModalVisible(false)}>
-                <Text style={{ color: colors.textMuted }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { flex: 1, marginTop: 0 }]} onPress={handleSaveEdit}>
-                <Text style={styles.buttonText}>Save</Text>
-              </TouchableOpacity>
+        <View style={[local.divider, { backgroundColor: colors.glassBorder, marginBottom: 14 }]} />
+
+        {/* ── Count + Length ── */}
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+          {/* Count */}
+          <View style={{ flex: 1 }}>
+            <FieldLabel text="COUNT" colors={colors} />
+            <View style={[local.trigger, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder }]}>
+              <Ionicons name="grid-outline" size={14} color={colors.textMuted} style={{ marginRight: 7 }} />
+              <TextInput
+                style={{ flex: 1, fontSize: 14, fontWeight: '500', color: colors.foreground, height: '100%' }}
+                value={voucherCount}
+                onChangeText={setVoucherCount}
+                keyboardType="numeric"
+              />
             </View>
           </View>
-        </View>
-      </Modal>
 
-      {/* Script Preview Modal */}
-      <Modal visible={scriptModalVisible} transparent animationType="slide">
-        <View style={localStyles.modalOverlay}>
-          <View style={[localStyles.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, maxHeight: '80%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600' }}>MikroTik Script Preview</Text>
-              <TouchableOpacity onPress={() => setScriptModalVisible(false)}>
-                <Ionicons name="close" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ backgroundColor: colors.inputBg, borderRadius: 8, padding: 12, marginBottom: 16 }}>
-              <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 12, lineHeight: 18 }}>
-                {generateProfileScript(getValidityString())}
-              </Text>
-            </ScrollView>
-            <TouchableOpacity style={[styles.button, { width: '100%', marginTop: 0 }]} onPress={() => setScriptModalVisible(false)}>
-              <Text style={styles.buttonText}>Got it</Text>
-            </TouchableOpacity>
+          {/* Length */}
+          <View style={{ flex: 1 }}>
+            <FieldLabel text="LENGTH" colors={colors} />
+            <FloatingDropdown
+              icon="text-outline"
+              selected={voucherLength}
+              options={LENGTH_OPTIONS}
+              onSelect={setVoucherLength}
+            />
           </View>
         </View>
-      </Modal>
+      </View>
 
-      <View style={{ height: 50 }} />
+      {/* ── Generate ── */}
+      <TouchableOpacity
+        style={[
+          local.generateBtn,
+          { backgroundColor: colors.primary },
+          (!selectedProfile || isGenerating) && { opacity: 0.5 },
+        ]}
+        onPress={handleGenerate}
+        disabled={!selectedProfile || isGenerating}
+        activeOpacity={0.8}
+      >
+        {isGenerating ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <Ionicons name="flash" size={18} color="#fff" />
+            <Text style={local.generateBtnText}>Generate Vouchers</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
-const localStyles = StyleSheet.create({
-  switcher: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4
+const TRIGGER_HEIGHT = 46;
+
+const local = StyleSheet.create({
+  card: { borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 20 },
+  fieldLabel: {
+    fontSize: 10, fontWeight: '700', letterSpacing: 0.6,
+    marginBottom: 6, textTransform: 'uppercase',
   },
-  switchBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 6,
-    gap: 6,
+  divider: { height: StyleSheet.hairlineWidth },
+  trigger: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 12, borderWidth: 1,
+    paddingHorizontal: 12,
+    height: TRIGGER_HEIGHT,           // ← consistent height for all fields
   },
-  switchText: {
-    fontSize: 13,
-    fontWeight: '500'
+  triggerText: { fontSize: 14, fontWeight: '500' },
+  refreshBtn: {
+    width: TRIGGER_HEIGHT,            // ← square, same as trigger height
+    height: TRIGGER_HEIGHT,
+    borderRadius: 12, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
   },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12
+  floatingList: {
+    position: 'absolute',
+    borderRadius: 14,
+    overflow: 'hidden',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18, shadowRadius: 12,
+    zIndex: 999,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24
+  floatingItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  modalBox: {
-    width: '100%',
-    maxWidth: 360,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1
-  }
+  floatingItemText: { fontSize: 14, fontWeight: '500' },
+  generateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 16, borderRadius: 16,
+  },
+  generateBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
 });

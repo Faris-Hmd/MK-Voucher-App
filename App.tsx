@@ -1,40 +1,62 @@
+import React from 'react';
+import { requireOptionalNativeModule } from 'expo';
 import { StatusBar } from 'expo-status-bar';
-import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
+
+try {
+  const DevMenuPreferences = requireOptionalNativeModule('DevMenuPreferences');
+  DevMenuPreferences?.setPreferencesAsync({
+    showFloatingActionButton: false,
+  });
+} catch (e) {
+  // Ignored in non-dev builds
+}
+
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
 import { loadConfig, saveConfig, saveSavedRouters, loadSavedRouters, RouterConfig } from './src/store';
 
+import { 
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold 
+} from '@expo-google-fonts/plus-jakarta-sans';
+
 import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
 import UsersScreen from './src/screens/UsersScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
-import StatsScreen from './src/screens/StatsScreen';
+import VoucherProfilesScreen from './src/screens/VoucherProfilesScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import PendingScreen from './src/screens/PendingScreen';
 
 import PagerView from 'react-native-pager-view';
 import { getAuth, onAuthStateChanged, FirebaseAuthTypes } from '@react-native-firebase/auth';
+
 import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from '@react-native-firebase/firestore';
 
-type Tab = 'generate' | 'list' | 'users' | 'stats' | 'settings';
+type Tab = 'generate' | 'profiles' | 'list' | 'users' | 'settings';
 
 const tabs: { key: Tab; label: string; icon: string }[] = [
-  { key: 'generate', label: 'Vouchers',  icon: 'add-circle' },
-  { key: 'list',     label: 'Batch',     icon: 'list'       },
-  { key: 'users',    label: 'Users',     icon: 'people'     },
-  { key: 'stats',    label: 'Stats',     icon: 'stats-chart' },
-  { key: 'settings', label: 'Settings',  icon: 'settings'   },
+  { key: 'generate', label: 'Vouchers',  icon: 'add-circle'   },
+  { key: 'profiles', label: 'Profiles',  icon: 'layers'        },
+  { key: 'list',     label: 'Batch',     icon: 'list'          },
+  { key: 'users',    label: 'Users',     icon: 'people'        },
+  { key: 'settings', label: 'Settings',  icon: 'settings'      },
 ];
 
 const TAB_TITLES: Record<Tab, string> = {
-  generate: 'Vouchers & Profiles',
+  generate: 'Generate Vouchers',
+  profiles: 'Voucher Profiles',
   list:     'Batch & Print',
   users:    'Hotspot Users',
-  stats:    'Live Stats',
   settings: 'Settings',
 };
 
@@ -119,89 +141,68 @@ function AppInner() {
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
 
-      {/* Top header bar */}
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
-        <View style={{ flexDirection: 'column', justifyContent: 'center' }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            {TAB_TITLES[activeTab]}
-          </Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{TAB_TITLES[activeTab]}</Text>
           {activeRouter && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-              <Ionicons name="wifi" size={11} color={isConnected ? colors.primary : colors.textMuted} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+              <View style={[styles.routerDot, { backgroundColor: isConnected ? '#22c55e' : '#ef4444' }]} />
               <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
                 {activeRouter.name || activeRouter.ip}
               </Text>
-              
             </View>
           )}
         </View>
-        
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {isConnected !== null && (
-            <View style={[styles.statusBadge, { backgroundColor: isConnected ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={[styles.statusDot, { backgroundColor: isConnected ? '#22c55e' : '#ef4444' }]} />
-                <Text style={[styles.statusText, { color: isConnected ? '#22c55e' : '#ef4444' }]}>
-                  {isConnected ? 'Connected' : 'Offline'}
-                </Text>
-              </View>
+            <View style={[styles.statusPill, {
+              backgroundColor: isConnected ? 'rgba(34,197,94,0.09)' : 'rgba(239,68,68,0.09)',
+              borderColor: isConnected ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)',
+            }]}>
+              <Text style={[styles.statusPillText, { color: isConnected ? '#22c55e' : '#ef4444' }]}>
+                {isConnected ? 'Online' : 'Offline'}
+              </Text>
             </View>
           )}
-          <TouchableOpacity onPress={() => setShowHelp(true)} style={styles.helpBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity onPress={() => setShowHelp(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Second bar for system resources */}
+      {/* Scrollable stat chips */}
       {isConnected && resources && (
-        <View style={[styles.subHeader, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
-          <View style={styles.resourceItem}>
-            <Ionicons name="people" size={13} color="#22c55e" />
-            <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              Online: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{onlineCount}</Text>
-            </Text>
-          </View>
+        <View style={{ flexShrink: 0 }}>
+          {/* Stats chips row */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4, gap: 5, flexDirection: 'row', alignItems: 'center' }}
+          >
+            {[
+              { icon: 'people', color: '#22c55e', label: `${onlineCount} online` },
+              { icon: 'hardware-chip-outline', color: colors.primary, label: `CPU ${resources['cpu-load']}%` },
+              { icon: 'pie-chart-outline', color: colors.primary, label: `RAM ${Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/${Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB` },
+              { icon: 'time-outline', color: colors.primary, label: formatUptimeAPI(resources['uptime']) },
+              ...(getTemperature() ? [{ icon: 'thermometer-outline', color: '#ef4444', label: `${getTemperature()}°C` }] : []),
+            ].map((chip, i) => (
+              <View key={i} style={[styles.statChip, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
+                <Ionicons name={chip.icon as any} size={10} color={chip.color} />
+                <Text style={[styles.statChipText, { color: colors.foreground }]}>{chip.label}</Text>
+              </View>
+            ))}
+          </ScrollView>
 
-          <View style={styles.resourceItem}>
-            <Ionicons name="hardware-chip-outline" size={13} color={colors.primary} />
-            <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              CPU: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{resources['cpu-load']}%</Text>
-            </Text>
-          </View>
-          
-          <View style={styles.resourceItem}>
-            <Ionicons name="pie-chart-outline" size={13} color={colors.primary} />
-            <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              RAM: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
-            </Text>
-          </View>
-
-          <View style={styles.resourceItem}>
-            <Ionicons name="time-outline" size={13} color={colors.primary} />
-            <Text style={[styles.resourceText, { color: colors.foreground }]}>
-              Up: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{formatUptimeAPI(resources['uptime'])}</Text>
-            </Text>
-          </View>
-
-          {getTemperature() && (
-            <View style={styles.resourceItem}>
-              <Ionicons name="thermometer-outline" size={13} color="#ef4444" />
-              <Text style={[styles.resourceText, { color: colors.foreground }]}>
-                <Text style={{ fontWeight: '400', color: colors.textMuted }}>{getTemperature()}°C</Text>
-              </Text>
+          {/* Device name — separate line */}
+          {resources['board-name'] && (
+            <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 6 }}>
+              <View style={[styles.statChip, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
+                <Ionicons name="cube-outline" size={10} color={colors.textMuted} />
+                <Text style={[styles.statChipText, { color: colors.textMuted }]}>{resources['board-name']}</Text>
+              </View>
             </View>
           )}
-        </View>
-      )}
-
-      {/* Third bar for model name */}
-      {isConnected && resources?.['board-name'] && (
-        <View style={[styles.modelBar, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder }]}>
-          <Ionicons name="cube-outline" size={13} color={colors.primary} />
-          <Text style={[styles.modelText, { color: colors.foreground }]}>
-            Device: <Text style={{ fontWeight: '400', color: colors.textMuted }}>{resources['board-name']}</Text>
-          </Text>
         </View>
       )}
 
@@ -213,16 +214,9 @@ function AppInner() {
         onPageSelected={handlePageSelected}
       >
         <View key="1"><GenerateScreen /></View>
-        <View key="2"><ListScreen /></View>
-        <View key="3"><UsersScreen /></View>
-        <View key="4">
-          <StatsScreen 
-            resources={resources} 
-            health={health} 
-            getTemperature={getTemperature} 
-            isConnected={isConnected} 
-          />
-        </View>
+        <View key="2"><VoucherProfilesScreen /></View>
+        <View key="3"><ListScreen /></View>
+        <View key="4"><UsersScreen /></View>
         <View key="5">
           <SettingsScreen 
             onSave={checkStatus} 
@@ -236,7 +230,7 @@ function AppInner() {
       <View style={[styles.bottomBar, {
         backgroundColor: colors.background,
         borderTopColor: colors.glassBorder,
-        paddingBottom: insets.bottom + 12,
+        paddingBottom: insets.bottom + 8,
       }]}>
         {tabs.map((tab, index) => {
           const active = activeTab === tab.key;
@@ -245,13 +239,19 @@ function AppInner() {
               key={tab.key}
               style={styles.tabButton}
               onPress={() => handleTabPress(tab.key, index)}
+              activeOpacity={0.65}
             >
-              <Ionicons
-                name={tab.icon as any}
-                size={22}
-                color={active ? colors.primary : colors.textMuted}
-              />
-              <Text style={[styles.tabText, { color: active ? colors.primary : colors.textMuted }]}>
+              <View style={styles.tabIconPill}>
+                <Ionicons
+                  name={tab.icon as any}
+                  size={active ? 22 : 20}
+                  color={active ? colors.primary : colors.textMuted}
+                />
+              </View>
+              <Text style={[styles.tabText, {
+                color: active ? colors.primary : colors.textMuted,
+                fontWeight: active ? '700' : '400',
+              }]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -366,6 +366,22 @@ function AppAuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    'PlusJakartaSans-Regular': PlusJakartaSans_400Regular,
+    'PlusJakartaSans-Medium': PlusJakartaSans_500Medium,
+    'PlusJakartaSans-SemiBold': PlusJakartaSans_600SemiBold,
+    'PlusJakartaSans-Bold': PlusJakartaSans_700Bold,
+    'PlusJakartaSans-ExtraBold': PlusJakartaSans_800ExtraBold,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#09090b', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
@@ -383,8 +399,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  routerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  statusPillText: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  statChipText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -394,74 +444,28 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   helpBtn: {
     padding: 2,
   },
   bottomBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-    justifyContent: 'space-around',
+    paddingTop: 10,
   },
   tabButton: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tabIconPill: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
+    marginBottom: 3,
   },
   tabText: {
-    fontWeight: '500',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  subHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  resourceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  resourceText: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  modelBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modelText: {
-    fontSize: 10,
-    fontWeight: '500',
+    fontSize: 9.5,
+    letterSpacing: 0.2,
   },
 });
