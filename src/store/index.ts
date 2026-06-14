@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getFirestore, doc, setDoc, getDoc } from '@react-native-firebase/firestore';
 
 export interface RouterConfig {
   id?: string;
@@ -7,6 +8,14 @@ export interface RouterConfig {
   user: string;
   pass: string;
   wifiName?: string;
+  vpnIp?: string;
+  useVpn?: boolean;
+  wgClientPrivateKey?: string;
+  wgClientIp?: string;
+  wgServerPublicKey?: string;
+  wgEndpointHost?: string;
+  wgEndpointPort?: string;
+  wgAllowedIps?: string;
 }
 
 const CONFIG_KEY = '@router_config';
@@ -45,5 +54,35 @@ export const loadSavedRouters = async (): Promise<RouterConfig[]> => {
   } catch (e) {
     console.error('Failed to load routers list', e);
     return [];
+  }
+};
+
+export const syncSavedRoutersToFirestore = async (userEmail: string, routers: RouterConfig[]) => {
+  try {
+    const emailKey = userEmail.toLowerCase().trim();
+    if (!emailKey) return;
+    const db = getFirestore();
+    const userDocRef = doc(db, 'users', emailKey);
+    await setDoc(userDocRef, { savedRouters: routers }, { merge: true });
+  } catch (e) {
+    console.error('Failed to sync saved routers to Firestore:', e);
+  }
+};
+
+export const loadSavedRoutersFromFirestore = async (userEmail: string): Promise<RouterConfig[] | null> => {
+  try {
+    const emailKey = userEmail.toLowerCase().trim();
+    if (!emailKey) return null;
+    const db = getFirestore();
+    const userDocRef = doc(db, 'users', emailKey);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return (data?.savedRouters as RouterConfig[]) || [];
+    }
+    return null;
+  } catch (e) {
+    console.error('Failed to load saved routers from Firestore:', e);
+    return null;
   }
 };

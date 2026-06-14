@@ -36,7 +36,7 @@ const getBaseUrl = async () => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured.");
 
-  let ip = config.ip.trim();
+  let ip = (config.useVpn && config.vpnIp) ? config.vpnIp.trim() : config.ip.trim();
   if (!ip.startsWith('http://') && !ip.startsWith('https://')) {
     ip = `http://${ip}`;
   }
@@ -688,6 +688,115 @@ export const fetchSystemClockAPI = async () => {
   const res = await fetch(`${baseUrl}/rest/system/clock`, { headers });
   if (!res.ok) {
     throw new Error("Failed to fetch system clock");
+  }
+  return await res.json();
+};
+
+export const fetchWireguardInterfacesAPI = async () => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/interface/wireguard`, { headers });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to fetch WireGuard interfaces (${res.status}): ${txt}`);
+  }
+  return await res.json();
+};
+
+export const createWireguardInterfaceAPI = async (name: string, listenPort: number) => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/interface/wireguard/add`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ name, "listen-port": String(listenPort) }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to create WireGuard interface (${res.status}): ${txt}`);
+  }
+  return await res.json();
+};
+
+export const assignWireguardIpAddressAPI = async (ifaceName: string, ipAddress: string) => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/ip/address/add`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ interface: ifaceName, address: ipAddress }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to assign IP address to interface (${res.status}): ${txt}`);
+  }
+  return await res.json();
+};
+
+export const addWireguardPeerAPI = async (
+  ifaceName: string,
+  publicKey: string,
+  endpointAddress: string,
+  endpointPort: number,
+  allowedAddress: string
+) => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/interface/wireguard/peers/add`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      interface: ifaceName,
+      "public-key": publicKey,
+      "endpoint-address": endpointAddress,
+      "endpoint-port": String(endpointPort),
+      "allowed-address": allowedAddress,
+      "persistent-keepalive": "25s"
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to add WireGuard peer (${res.status}): ${txt}`);
+  }
+  return await res.json();
+};
+
+export const deleteWireguardInterfaceAPI = async (id: string) => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/interface/wireguard/remove`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ".id": id }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to delete WireGuard interface (${res.status}): ${txt}`);
+  }
+};
+
+export const fetchSystemCloudAPI = async () => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/system/cloud`, { headers });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to fetch system cloud settings (${res.status}): ${txt}`);
+  }
+  return await res.json();
+};
+
+export const enableSystemCloudAPI = async () => {
+  const baseUrl = await getBaseUrl();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${baseUrl}/rest/system/cloud/set`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ "ddns-enabled": "true" }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to enable IP Cloud DDNS (${res.status}): ${txt}`);
   }
   return await res.json();
 };

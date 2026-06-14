@@ -141,6 +141,7 @@ function AppInner() {
 
       {/* Header */}
       <View style={[styles.header, { borderBottomWidth: 0, paddingBottom: 4 }]}>
+        {/* Left Side: Logo & Page Name */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={{
             width: 36,
@@ -157,51 +158,63 @@ function AppInner() {
             <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginTop: 1 }}>{TAB_TITLES[activeTab]}</Text>
           </View>
         </View>
+
+        {/* Right Side: Active Profile Name & Status Dot */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} />
+          <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
+            <Text style={{ color: colors.foreground }}>{activeRouter ? (activeRouter.name || activeRouter.ip) : 'router'}</Text>
+            {isConnected && resources?.['board-name'] ? ` (${resources['board-name']})` : ''}
+          </Text>
+        </View>
       </View>
 
       {/* Status Line */}
       {isConnected && resources ? (
-        <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>
-              Active Profile: <Text style={{ color: colors.foreground }}>{activeRouter?.name || activeRouter?.ip}</Text>
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
-
+        <View style={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10 }}>
+          {/* Bottom Line: Status info chips (RAM, CPU, Uptime, Temp) */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingLeft: 0 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Ionicons name="hardware-chip-outline" size={11} color={colors.textMuted} />
               <Text style={{ fontSize: 11, color: colors.textMuted }}>
                 RAM: <Text style={{ color: colors.foreground }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
               </Text>
             </View>
-            <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
 
+            {resources['cpu-load'] !== undefined && resources['cpu-load'] !== null && (
+              <>
+                <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name="pulse-outline" size={11} color={colors.textMuted} />
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    CPU: <Text style={{ color: colors.foreground }}>{resources['cpu-load']}%</Text>
+                  </Text>
+                </View>
+              </>
+            )}
+
+            <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Ionicons name="time-outline" size={11} color={colors.textMuted} />
               <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                Uptime: <Text style={{ color: colors.foreground }}>{formatUptimeAPI(resources['uptime'])}</Text>
+                <Text style={{ color: colors.foreground }}>{formatUptimeAPI(resources['uptime'])}</Text>
               </Text>
             </View>
-          </View>
-          
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
-            <Text style={{ fontSize: 11, color: colors.foreground, fontWeight: '500' }}>
-              {resources['board-name'] || 'router'}
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} />
-            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
-              {activeRouter ? `${activeRouter.name || activeRouter.ip} · ` : ''}
-              <Text style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>{isConnected ? 'Online' : 'Offline'}</Text>
-            </Text>
+
+            {getTemperature() !== null && getTemperature() !== undefined && (
+              <>
+                <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name="thermometer-outline" size={11} color={colors.textMuted} />
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    <Text style={{ color: colors.foreground }}>{getTemperature()}°C</Text>
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
-      )}
+      ) : null}
 
       {/* Swipeable Main content */}
       <PagerView
@@ -219,6 +232,7 @@ function AppInner() {
             onSave={checkStatus} 
             activeRouter={activeRouter}
             setActiveRouter={setActiveRouter}
+            userEmail={getAuth().currentUser?.email || undefined}
           />
         </View>
       </PagerView>
