@@ -182,7 +182,6 @@ export default function ListScreen() {
       setVouchers(enriched);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to connect to router. Check your IP and credentials in Settings, and ensure your device is connected to the MikroTik network.');
-      console.log('Failed to fetch vouchers', err);
     } finally {
       setIsLoading(false);
     }
@@ -649,17 +648,17 @@ export default function ListScreen() {
 
               {/* Stats Badges */}
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-                <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>Total</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginTop: 2 }}>{originalCount}</Text>
+                <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.glassBorder }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '600', letterSpacing: 0.4 }}>TOTAL</Text>
+                  <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{originalCount}</Text>
                 </View>
-                <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                  <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '500' }}>Unused</Text>
-                  <Text style={{ color: '#22c55e', fontSize: 15, fontWeight: '600', marginTop: 2 }}>{remainingCount}</Text>
+                <View style={{ flex: 1, backgroundColor: 'rgba(34,197,94,0.04)', padding: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.12)' }}>
+                  <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '600', letterSpacing: 0.4 }}>UNUSED</Text>
+                  <Text style={{ color: '#22c55e', fontSize: 16, fontWeight: '700', marginTop: 2 }}>{remainingCount}</Text>
                 </View>
-                <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                  <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '500' }}>Active</Text>
-                  <Text style={{ color: '#f59e0b', fontSize: 15, fontWeight: '600', marginTop: 2 }}>{inUseVouchers.length}</Text>
+                <View style={{ flex: 1, backgroundColor: 'rgba(245,158,11,0.04)', padding: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(245,158,11,0.12)' }}>
+                  <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '600', letterSpacing: 0.4 }}>ACTIVE</Text>
+                  <Text style={{ color: '#f59e0b', fontSize: 16, fontWeight: '700', marginTop: 2 }}>{inUseVouchers.length}</Text>
                 </View>
               </View>
 
@@ -668,9 +667,11 @@ export default function ListScreen() {
                 flexDirection: 'row', 
                 alignItems: 'center', 
                 backgroundColor: colors.secondary, 
-                borderRadius: 10, 
+                borderRadius: 12, 
                 paddingHorizontal: 12, 
-                height: 38,
+                height: 40,
+                borderWidth: 1.5,
+                borderColor: colors.glassBorder,
                 marginBottom: 16
               }}>
                 <Ionicons name="search" size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
@@ -690,16 +691,63 @@ export default function ListScreen() {
                 ) : null}
               </View>
 
+              {/* Unused Vouchers List */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+                  Unused Vouchers ({availableVouchers.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase())).length})
+                </Text>
+                {(() => {
+                  const filteredUnused = availableVouchers.filter((u: any) =>
+                    u.name.toLowerCase().includes(searchQuery.toLowerCase())
+                  );
+                  if (filteredUnused.length === 0) {
+                    return (
+                      <View style={{ padding: 12, backgroundColor: colors.secondary + '66', borderRadius: 10, alignItems: 'center' }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          No unused vouchers found.
+                        </Text>
+                      </View>
+                    );
+                  }
+                  return filteredUnused.map((u: any) => (
+                    <TouchableOpacity
+                      key={u.name}
+                      activeOpacity={0.7}
+                      onPress={async () => {
+                        await Clipboard.setStringAsync(u.name);
+                        Alert.alert('Copied', `Voucher code "${u.name}" copied to clipboard.`);
+                      }}
+                      style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        backgroundColor: colors.cardBg,
+                        borderWidth: 1.5,
+                        borderColor: colors.glassBorder,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        borderRadius: 12,
+                        marginBottom: 6
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="ticket-outline" size={14} color={colors.primary} />
+                        <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 13, fontWeight: '700' }}>{u.name}</Text>
+                      </View>
+                      <Ionicons name="copy-outline" size={13} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ));
+                })()}
+              </View>
+
               {/* Active / In-Use List */}
               <View style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '500' }}>
-                    Active / In-Use Vouchers ({filteredInUse.length})
-                  </Text>
-                </View>
+                <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+                  Active / In-Use Vouchers ({filteredInUse.length})
+                </Text>
 
                 {filteredInUse.length === 0 ? (
-                  <View style={{ padding: 12, backgroundColor: colors.secondary, borderRadius: 8, alignItems: 'center' }}>
+                  <View style={{ padding: 12, backgroundColor: colors.secondary + '66', borderRadius: 10, alignItems: 'center' }}>
                     <Text style={{ color: colors.textMuted, fontSize: 12, textAlign: 'center' }}>
                       {searchQuery ? 'No matching active vouchers.' : 'No active vouchers in this batch.'}
                     </Text>
@@ -716,27 +764,26 @@ export default function ListScreen() {
                         flexDirection: 'row', 
                         alignItems: 'center', 
                         justifyContent: 'space-between', 
-                        backgroundColor: colors.secondary,
-                        paddingVertical: 8,
+                        backgroundColor: colors.cardBg,
+                        borderWidth: 1.5,
+                        borderColor: colors.glassBorder,
+                        paddingVertical: 10,
                         paddingHorizontal: 12,
-                        borderRadius: 8,
+                        borderRadius: 12,
                         marginBottom: 6
                       }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' }} />
-                          <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 12, fontWeight: '500' }}>{u.name}</Text>
-                          <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
-                            <Text style={{ color: '#f59e0b', fontSize: 8, fontWeight: '500' }}>Active</Text>
-                          </View>
+                          <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 13, fontWeight: '700' }}>{u.name}</Text>
                           {isOnline && (
                             <View style={{ backgroundColor: 'rgba(59, 130, 246, 0.08)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
-                              <Text style={{ color: colors.primary, fontSize: 8, fontWeight: '500' }}>Online</Text>
+                              <Text style={{ color: colors.primary, fontSize: 8, fontWeight: '600' }}>Online</Text>
                             </View>
                           )}
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                            Remaining: <Text style={{ color: colors.primary, fontWeight: '600' }}>{remaining}</Text>
+                            Remaining: <Text style={{ color: colors.primary, fontWeight: '700' }}>{remaining}</Text>
                           </Text>
                         </View>
                       </View>
@@ -890,210 +937,106 @@ export default function ListScreen() {
                 
                 return (
                   <View key={comment} style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
                     backgroundColor: colors.cardBg, 
                     padding: 14, 
                     borderRadius: 16, 
-                    marginBottom: 10,
-                    borderWidth: 1,
+                    marginBottom: 12,
+                    borderWidth: 1.5,
                     borderColor: colors.glassBorder,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.04,
-                    shadowRadius: 6,
-                    elevation: 1,
                   }}>
-                    {/* Left Icon (List Icon with Total Count) */}
-                    <View style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      backgroundColor: colors.secondary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 12,
-                      borderWidth: 1,
-                      borderColor: colors.glassBorder,
-                    }}>
-                      <Ionicons name="list-outline" size={16} color={colors.primary} style={{ marginBottom: -2 }} />
-                      <Text style={{ color: colors.foreground, fontSize: 10, fontWeight: '800' }}>
-                        {originalCount}
-                      </Text>
-                    </View>
-
-                    {/* Middle Info Area */}
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                        {(() => {
-                          if (formattedTime.includes(' ')) {
-                            const [datePart, timePart] = formattedTime.split(' ');
-                            return (
-                                <View style={{
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  backgroundColor: colors.primary + '10',
-                                  paddingHorizontal: 8,
-                                  paddingVertical: 3,
-                                  borderRadius: 8,
-                                  borderWidth: 1,
-                                  borderColor: colors.primary + '25',
-                                  gap: 4,
-                                }}>
-                                  <Ionicons name="calendar-outline" size={11} color={colors.primary} />
-                                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
-                                    {datePart}
-                                  </Text>
-                                  <View style={{ width: 1, height: 10, backgroundColor: colors.primary + '25', marginHorizontal: 2 }} />
-                                  <Ionicons name="time-outline" size={11} color={colors.primary} />
-                                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
-                                    {timePart}
-                                  </Text>
-                                </View>
-                            );
-                          }
-                          return (
-                            <View style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              backgroundColor: colors.secondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: colors.glassBorder,
-                              gap: 4,
-                            }}>
-                              <Ionicons name="pricetag-outline" size={11} color={colors.foreground} />
-                              <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>
-                                {formattedTime}
-                              </Text>
-                            </View>
-                          );
-                        })()}
+                    {/* Header Row */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="calendar-outline" size={13} color={colors.primary} />
+                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>
+                          {formattedTime}
+                        </Text>
                       </View>
-
-                      {/* Stats badges (Active / Data Limits) if any */}
-                      {(activeCount > 0 || limitBytes > 0) && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                          {activeCount > 0 && (
-                            <View style={{ 
-                              flexDirection: 'row', 
-                              alignItems: 'center', 
-                              backgroundColor: 'rgba(245, 158, 11, 0.06)', 
-                              paddingHorizontal: 8, 
-                              paddingVertical: 3, 
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: 'rgba(245,158,11,0.12)'
-                            }}>
-                              <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '500' }}>Active: </Text>
-                              <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '700' }}>{activeCount}</Text>
-                            </View>
-                          )}
-                          {limitBytes > 0 && (
-                            <View style={{ 
-                              flexDirection: 'row', 
-                              alignItems: 'center', 
-                              backgroundColor: 'rgba(59, 130, 246, 0.06)', 
-                              paddingHorizontal: 8, 
-                              paddingVertical: 3, 
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: 'rgba(59, 130, 246, 0.12)'
-                            }}>
-                              <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '500' }}>Limit: </Text>
-                              <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '700' }}>{getGBString(limitBytes)}</Text>
-                            </View>
-                          )}
+                      {limitBytes > 0 && (
+                        <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.glassBorder }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '600' }}>
+                            {getGBString(limitBytes)}
+                          </Text>
                         </View>
                       )}
                     </View>
 
-                    {/* Right Action Container (Usage Info + Action Buttons) */}
-                    <View style={{ alignItems: 'flex-end', gap: 5 }}>
-                      {/* Small Usage Indicator */}
-                      <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        backgroundColor: remainingCount === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(34, 197, 94, 0.08)',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 6,
-                        borderWidth: 1,
-                        borderColor: remainingCount === 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                        gap: 3,
-                        marginBottom: 6,
-                      }}>
-                        <Ionicons 
-                          name={remainingCount === 0 ? "checkmark-circle" : "pie-chart-outline"} 
-                          size={9} 
-                          color={remainingCount === 0 ? '#ef4444' : '#22c55e'} 
-                        />
-                        <Text style={{ 
-                          color: remainingCount === 0 ? '#ef4444' : '#22c55e', 
-                          fontSize: 9, 
-                          fontWeight: '800' 
-                        }}>
-                          {remainingCount} unused of {originalCount}
-                        </Text>
-                      </View>
+                    {/* Progress Ratio Section */}
+                    {(() => {
+                      const ratio = originalCount > 0 ? (remainingCount / originalCount) : 0;
+                      const percent = Math.round(ratio * 100);
+                      return (
+                        <View style={{ marginBottom: 14 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>
+                              {remainingCount} <Text style={{ color: colors.textMuted, fontWeight: '500' }}>of {originalCount} vouchers unused</Text>
+                            </Text>
+                            {activeCount > 0 && (
+                              <Text style={{ fontSize: 11, color: '#f59e0b', fontWeight: '600' }}>
+                                {activeCount} Active
+                              </Text>
+                            )}
+                          </View>
+                          <View style={{ height: 6, width: '100%', backgroundColor: colors.secondary, borderRadius: 3, overflow: 'hidden' }}>
+                            <View style={{ height: '100%', width: `${percent}%`, backgroundColor: colors.primary, borderRadius: 3 }} />
+                          </View>
+                        </View>
+                      );
+                    })()}
 
-                      {/* Buttons Row */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <TouchableOpacity
-                          style={{ 
-                            backgroundColor: colors.inputBg, 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: 8, 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            borderWidth: 1,
-                            borderColor: colors.glassBorder
-                          }}
-                          onPress={() => setSelectedBatch({ profile: prof, comment, users })}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="information" size={16} color={colors.foreground} />
-                        </TouchableOpacity>
+                    {/* Footer Actions */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <TouchableOpacity
+                        onPress={() => setSelectedBatch({ profile: prof, comment, users })}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      >
+                        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>View Details</Text>
+                        <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+                      </TouchableOpacity>
 
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <TouchableOpacity
-                          style={{ 
-                            backgroundColor: colors.primary, 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: 8, 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            opacity: printingGroup === groupKey ? 0.6 : 1 
-                          }}
                           onPress={() => handlePrintGroup(prof, comment, users)}
                           disabled={printingGroup === groupKey}
-                          activeOpacity={0.7}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            backgroundColor: colors.primary + '14',
+                            borderColor: colors.primary + '28',
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                          }}
                         >
-                          {printingGroup === groupKey
-                            ? <ActivityIndicator color="#fff" size="small" style={{ transform: [{ scale: 0.6 }] }} />
-                            : <Ionicons name="print" size={14} color="#fff" />
-                          }
+                          {printingGroup === groupKey ? (
+                            <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
+                          ) : (
+                            <>
+                              <Ionicons name="print-outline" size={12} color={colors.primary} />
+                              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>Print</Text>
+                            </>
+                          )}
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                          style={{ 
-                            backgroundColor: 'rgba(239,68,68,0.06)', 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: 8, 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            borderWidth: 1,
-                            borderColor: 'rgba(239,68,68,0.12)'
-                          }}
                           onPress={() => handleDeleteGroup(`${prof} (${formattedTime})`, users)}
                           disabled={isDeleting || printingGroup === groupKey}
-                          activeOpacity={0.7}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            backgroundColor: 'rgba(239,68,68,0.06)',
+                            borderColor: 'rgba(239,68,68,0.12)',
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                          }}
                         >
-                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                          <Ionicons name="trash-outline" size={12} color="#ef4444" />
+                          <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '600' }}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </View>

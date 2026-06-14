@@ -260,7 +260,7 @@ export default function UsersScreen() {
 
   const renderActiveItem = ({ item }: { item: any }) => {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, { padding: 14, borderWidth: 1.5, borderColor: colors.glassBorder }]}>
         <View style={localStyles.cardHeader}>
           <View style={localStyles.userInfo}>
             <View style={[localStyles.iconContainer, { backgroundColor: colors.secondary }]}>
@@ -268,17 +268,19 @@ export default function UsersScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <Text style={[localStyles.userName, { color: colors.foreground }]}>{item.user}</Text>
+                <Text style={[localStyles.userName, { color: colors.foreground, fontFamily: 'monospace', fontWeight: '700' }]}>{item.user}</Text>
                 <View style={{ 
                   backgroundColor: item.isOnline ? 'rgba(34,197,94,0.06)' : 'rgba(107,114,128,0.06)', 
                   paddingHorizontal: 6, 
                   paddingVertical: 1, 
                   borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: item.isOnline ? 'rgba(34,197,94,0.12)' : 'rgba(107,114,128,0.12)'
                 }}>
-                  <Text style={{ color: item.isOnline ? '#22c55e' : colors.textMuted, fontSize: 9, fontWeight: '500' }}>{item.status}</Text>
+                  <Text style={{ color: item.isOnline ? '#22c55e' : colors.textMuted, fontSize: 9, fontWeight: '600' }}>{item.status}</Text>
                 </View>
               </View>
-              <Text style={[localStyles.userMeta, { color: colors.primary, fontWeight: '500', marginTop: 2 }]}>{item.deviceName}</Text>
+              <Text style={[localStyles.userMeta, { color: colors.primary, fontWeight: '600', marginTop: 2 }]}>{item.deviceName}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                 <Ionicons name="location-outline" size={12} color={colors.textMuted} />
                 <Text style={[localStyles.userMeta, { color: colors.textMuted, marginTop: 0 }]}>
@@ -291,7 +293,7 @@ export default function UsersScreen() {
             {item.isOnline && (
               <TouchableOpacity 
                 onPress={() => handleKick(item)}
-                style={[localStyles.kickButton, { backgroundColor: 'rgba(239,68,68,0.06)' }]}
+                style={[localStyles.kickButton, { backgroundColor: 'rgba(239,68,68,0.06)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.12)' }]}
               >
                 <Ionicons name="log-out-outline" size={16} color="#ef4444" />
               </TouchableOpacity>
@@ -299,24 +301,24 @@ export default function UsersScreen() {
           </View>
         </View>
 
-        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder, marginVertical: 10 }]} />
+        <View style={[localStyles.divider, { backgroundColor: colors.glassBorder, marginVertical: 12 }]} />
 
         <View style={localStyles.statsGrid}>
-          <View style={localStyles.statItem}>
+          <View style={[localStyles.statCapsule, { backgroundColor: colors.secondary }]}>
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Profile</Text>
-            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.profile}</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]} numberOfLines={1}>{item.profile}</Text>
           </View>
-          <View style={localStyles.statItem}>
+          <View style={[localStyles.statCapsule, { backgroundColor: colors.secondary }]}>
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Uptime</Text>
-            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{item.uptime}</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]} numberOfLines={1}>{item.uptime}</Text>
           </View>
-          <View style={localStyles.statItem}>
+          <View style={[localStyles.statCapsule, { backgroundColor: colors.secondary }]}>
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Remain</Text>
-            <Text style={[localStyles.statValue, { color: colors.primary }]}>{item['session-time-left']}</Text>
+            <Text style={[localStyles.statValue, { color: colors.primary }]} numberOfLines={1}>{item['session-time-left']}</Text>
           </View>
-          <View style={localStyles.statItem}>
+          <View style={[localStyles.statCapsule, { backgroundColor: colors.secondary }]}>
             <Text style={[localStyles.statLabel, { color: colors.textMuted }]}>Down</Text>
-            <Text style={[localStyles.statValue, { color: colors.foreground }]}>{formatMB(item['bytes-out'])}</Text>
+            <Text style={[localStyles.statValue, { color: colors.foreground }]} numberOfLines={1}>{formatMB(item['bytes-out'])}</Text>
           </View>
         </View>
       </View>
@@ -399,7 +401,7 @@ export default function UsersScreen() {
           {(refreshing || (loading && data.length === 0)) ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="refresh" size={18} color={colors.primary} />}
         </TouchableOpacity>
       </View>
-      <View style={[localStyles.tabBar, { backgroundColor: colors.inputBg }]}>
+      <View style={[localStyles.tabBar, { backgroundColor: colors.secondary, borderWidth: 1.5, borderColor: colors.glassBorder }]}>
         <TouchableOpacity 
           onPress={() => setActiveTab('active')}
           style={[localStyles.tab, activeTab === 'active' && { backgroundColor: colors.cardBg }]}
@@ -462,22 +464,22 @@ export default function UsersScreen() {
 
 const localStyles = StyleSheet.create({
   container: { flex: 1 },
-  tabBar: { flexDirection: 'row', margin: 12, marginBottom: 0, borderRadius: 10, padding: 4, gap: 4 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 6, gap: 6 },
-  tabText: { fontSize: 13, fontWeight: '500' },
+  tabBar: { flexDirection: 'row', margin: 12, marginBottom: 0, borderRadius: 12, padding: 3, gap: 4 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 9, gap: 6 },
+  tabText: { fontSize: 13, fontWeight: '600' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   userInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   iconContainer: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  userName: { fontSize: 14, fontWeight: '500' },
+  userName: { fontSize: 14, fontWeight: '600' },
   userMeta: { fontSize: 11 },
   kickButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   infoButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
-  statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-  statItem: { alignItems: 'flex-start' },
-  statLabel: { fontSize: 10, fontWeight: '500', color: '#888' },
-  statValue: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
+  statCapsule: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
+  statLabel: { fontSize: 9, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
+  statValue: { fontSize: 12, fontWeight: '700', marginTop: 3 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, opacity: 0.8 },
   macText: { fontSize: 10, fontFamily: 'monospace' },
   hostDetails: { gap: 6 },

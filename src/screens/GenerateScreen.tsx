@@ -102,7 +102,7 @@ const LENGTH_OPTIONS: DropdownOption[] = [
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function GenerateScreen() {
-  const { colors, styles } = useTheme();
+  const { colors } = useTheme();
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -154,107 +154,154 @@ export default function GenerateScreen() {
     }
   };
 
-  const profileOptions: DropdownOption[] = profiles.map(p => ({ label: p.name, value: p.name }));
   const noProfiles = profiles.length === 0 && !isLoading;
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: 20 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={[local.card, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+      {/* Step 1: Select Profile */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+          Select Profile
+        </Text>
+        <TouchableOpacity onPress={loadProfiles} disabled={isLoading} style={{ padding: 4 }}>
+          {isLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="refresh" size={16} color={colors.primary} />
+          )}
+        </TouchableOpacity>
+      </View>
 
-        {/* ── Profile row ── */}
-        <FieldLabel text="PROFILE" colors={colors} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <FloatingDropdown
-            icon="layers-outline"
-            selected={selectedProfile}
-            options={profileOptions}
-            onSelect={setSelectedProfile}
-            placeholder={isLoading ? 'Loading…' : noProfiles ? 'No profiles yet' : 'Select a profile'}
-            disabled={noProfiles || isLoading}
-          />
-          {/* Refresh button — same height as trigger */}
-          <TouchableOpacity
-            onPress={loadProfiles}
-            disabled={isLoading}
-            style={[local.refreshBtn, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder }]}
-          >
-            {isLoading
-              ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Ionicons name="refresh" size={16} color={colors.primary} />}
-          </TouchableOpacity>
+      {noProfiles ? (
+        <View style={[local.card, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, padding: 30, alignItems: 'center' }]}>
+          <Ionicons name="alert-circle-outline" size={32} color={colors.textMuted} style={{ marginBottom: 8 }} />
+          <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
+            No profiles found. Add one in the Profiles tab first.
+          </Text>
         </View>
+      ) : (
+        <View style={{ gap: 8, marginBottom: 20 }}>
+          {profiles.map((prof) => {
+            const isSelected = selectedProfile === prof.name;
+            const comment = (prof as any).comment || '';
+            const isDataBased = comment.includes('LIMIT:');
+            
+            // Parse limits for subtitle display
+            let limitSub = 'Time-Based';
+            if (isDataBased) {
+              const parts = comment.split('|');
+              const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
+              if (limitPart) {
+                limitSub = `Limit: ${limitPart.split(':')[1]} MB`;
+              } else {
+                limitSub = 'Data-Based';
+              }
+            }
 
-        {/* Profile Details Badge */}
-        {selectedProfile && (() => {
-          const profObj = profiles.find(p => p.name === selectedProfile);
-          if (!profObj || !(profObj as any).comment) return null;
-          
-          const parts = (profObj as any).comment.split('|');
-          const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
-          const endPart = parts.find((pt: string) => pt.startsWith('END_BY_USAGE:'));
-          
-          const limitVal = limitPart ? limitPart.split(':')[1] + ' MB' : 'Unlimited';
-          
-          return (
+            return (
+              <TouchableOpacity
+                key={prof['.id'] || prof.name}
+                activeOpacity={0.8}
+                onPress={() => setSelectedProfile(prof.name)}
+                style={[
+                  local.profileItem,
+                  {
+                    backgroundColor: colors.cardBg,
+                    borderColor: isSelected ? colors.primary : colors.glassBorder,
+                  },
+                  isSelected && { backgroundColor: colors.primary + '0a' }
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <View style={[local.iconContainer, { backgroundColor: colors.secondary }]}>
+                    <Ionicons 
+                      name={(isDataBased ? "server-outline" : "time-outline") as any} 
+                      size={16} 
+                      color={isSelected ? colors.primary : colors.textMuted} 
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
+                      {prof.name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {limitSub}
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons 
+                  name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                  size={20} 
+                  color={isSelected ? colors.primary : colors.glassBorder} 
+                />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Step 2: Voucher Details */}
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 12 }}>
+        Voucher Details
+      </Text>
+
+      <View style={[local.card, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, padding: 14, marginBottom: 20 }]}>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          {/* Quantity */}
+          <View style={{ flex: 1.2 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+              Quantity
+            </Text>
             <View style={{ 
               flexDirection: 'row', 
-              gap: 8, 
-              marginTop: -6,
-              marginBottom: 14
+              alignItems: 'center', 
+              borderWidth: 1.5, 
+              borderColor: colors.glassBorder, 
+              borderRadius: 12,
+              backgroundColor: colors.inputBg,
+              paddingHorizontal: 12,
+              height: 42,
             }}>
-              <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>
-                  Limit: <Text style={{ color: colors.primary, fontWeight: '700' }}>{limitVal}</Text>
-                </Text>
-              </View>
-              {endPart && (
-                <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>
-                    End by usage only: <Text style={{ color: '#22c55e', fontWeight: '700' }}>Yes</Text>
-                  </Text>
-                </View>
-              )}
-            </View>
-          );
-        })()}
-
-        <View style={[local.divider, { backgroundColor: colors.glassBorder, marginBottom: 14 }]} />
-
-        {/* ── Count + Length ── */}
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-          {/* Count */}
-          <View style={{ flex: 1 }}>
-            <FieldLabel text="COUNT" colors={colors} />
-            <View style={[local.trigger, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder }]}>
-              <Ionicons name="grid-outline" size={14} color={colors.textMuted} style={{ marginRight: 7 }} />
+              <Ionicons name="apps-outline" size={14} color={colors.textMuted} style={{ marginRight: 8 }} />
               <TextInput
-                style={{ flex: 1, fontSize: 14, fontWeight: '500', color: colors.foreground, height: '100%' }}
+                style={{ 
+                  flex: 1,
+                  fontSize: 13, 
+                  fontWeight: '600', 
+                  color: colors.foreground, 
+                  padding: 0,
+                }}
                 value={voucherCount}
                 onChangeText={setVoucherCount}
                 keyboardType="numeric"
+                placeholder="e.g. 50"
+                placeholderTextColor={colors.textMuted}
               />
             </View>
           </View>
 
-          {/* Length */}
+          {/* Digits selector */}
           <View style={{ flex: 1 }}>
-            <FieldLabel text="LENGTH" colors={colors} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+              Length
+            </Text>
             <FloatingDropdown
-              icon="text-outline"
+              icon="key-outline"
               selected={voucherLength}
               options={LENGTH_OPTIONS}
               onSelect={setVoucherLength}
+              placeholder="Select length"
             />
           </View>
         </View>
       </View>
 
-      {/* ── Generate ── */}
+      {/* Generate Button */}
       <TouchableOpacity
         style={[
           local.generateBtn,
@@ -263,65 +310,89 @@ export default function GenerateScreen() {
         ]}
         onPress={handleGenerate}
         disabled={!selectedProfile || isGenerating}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
       >
         {isGenerating ? (
           <ActivityIndicator size="small" color="#fff" />
         ) : (
-          <>
-            <Ionicons name="flash" size={18} color="#fff" />
-            <Text style={local.generateBtnText}>Generate Vouchers</Text>
-          </>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="ticket" size={18} color="#fff" />
+            <Text style={local.generateBtnText}>
+              Generate {voucherCount} · {selectedProfile}
+            </Text>
+          </View>
         )}
       </TouchableOpacity>
-
-      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
-const TRIGGER_HEIGHT = 46;
-
 const local = StyleSheet.create({
-  card: { borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 20 },
-  fieldLabel: {
-    fontSize: 10, fontWeight: '700', letterSpacing: 0.6,
-    marginBottom: 6, textTransform: 'uppercase',
+  card: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20 },
+  profileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
   },
-  divider: { height: StyleSheet.hairlineWidth },
+  iconContainer: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  generateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 10,
+  },
+  generateBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   trigger: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 12, borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    height: TRIGGER_HEIGHT,           // ← consistent height for all fields
+    borderRadius: 12,
+    borderWidth: 1.5,
+    height: 42,
   },
-  triggerText: { fontSize: 14, fontWeight: '500' },
-  refreshBtn: {
-    width: TRIGGER_HEIGHT,            // ← square, same as trigger height
-    height: TRIGGER_HEIGHT,
-    borderRadius: 12, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
+  triggerText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   floatingList: {
     position: 'absolute',
-    borderRadius: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
     overflow: 'hidden',
-    elevation: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18, shadowRadius: 12,
-    zIndex: 999,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   floatingItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  floatingItemText: { fontSize: 14, fontWeight: '500' },
-  generateBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 16, borderRadius: 16,
+  floatingItemText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
-  generateBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
 });

@@ -32,7 +32,6 @@ import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
 import UsersScreen from './src/screens/UsersScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
-import HelpScreen from './src/screens/HelpScreen';
 import VoucherProfilesScreen from './src/screens/VoucherProfilesScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import PendingScreen from './src/screens/PendingScreen';
@@ -45,24 +44,23 @@ import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from '@react-n
 type Tab = 'generate' | 'profiles' | 'list' | 'users' | 'settings';
 
 const tabs: { key: Tab; label: string; icon: string }[] = [
-  { key: 'generate', label: 'Vouchers',  icon: 'add-circle'   },
-  { key: 'profiles', label: 'Profiles',  icon: 'layers'        },
-  { key: 'list',     label: 'Batch',     icon: 'list'          },
-  { key: 'users',    label: 'Users',     icon: 'people'        },
-  { key: 'settings', label: 'Settings',  icon: 'settings'      },
+  { key: 'generate', label: 'Vouchers',  icon: 'ticket-outline' },
+  { key: 'profiles', label: 'Profiles',  icon: 'server-outline' },
+  { key: 'list',     label: 'Batch',     icon: 'layers-outline' },
+  { key: 'users',    label: 'Users',     icon: 'people-outline' },
+  { key: 'settings', label: 'Settings',  icon: 'settings-outline' },
 ];
 
 const TAB_TITLES: Record<Tab, string> = {
-  generate: 'Generate Vouchers',
-  profiles: 'Voucher Profiles',
+  generate: 'Vouchers',
+  profiles: 'Profiles',
   list:     'Batch & Print',
-  users:    'Hotspot Users',
+  users:    'Users',
   settings: 'Settings',
 };
 
 function AppInner() {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
-  const [showHelp, setShowHelp] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [activeRouter, setActiveRouter] = useState<RouterConfig | null>(null);
   const [resources, setResources] = useState<any>(null);
@@ -142,67 +140,66 @@ function AppInner() {
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{TAB_TITLES[activeTab]}</Text>
-          {activeRouter && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
-              <View style={[styles.routerDot, { backgroundColor: isConnected ? '#22c55e' : '#ef4444' }]} />
-              <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
-                {activeRouter.name || activeRouter.ip}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={[styles.header, { borderBottomWidth: 0, paddingBottom: 4 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {isConnected !== null && (
-            <View style={[styles.statusPill, {
-              backgroundColor: isConnected ? 'rgba(34,197,94,0.09)' : 'rgba(239,68,68,0.09)',
-              borderColor: isConnected ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)',
-            }]}>
-              <Text style={[styles.statusPillText, { color: isConnected ? '#22c55e' : '#ef4444' }]}>
-                {isConnected ? 'Online' : 'Offline'}
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={() => setShowHelp(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
-          </TouchableOpacity>
+          <View style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            backgroundColor: colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Ionicons name="ticket" size={20} color="#fff" />
+          </View>
+          <View style={{ justifyContent: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground, letterSpacing: -0.3 }}>HotSpot Manager</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginTop: 1 }}>{TAB_TITLES[activeTab]}</Text>
+          </View>
         </View>
       </View>
 
-      {/* Scrollable stat chips */}
-      {isConnected && resources && (
-        <View style={{ flexShrink: 0 }}>
-          {/* Stats chips row */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4, gap: 5, flexDirection: 'row', alignItems: 'center' }}
-          >
-            {[
-              { icon: 'people', color: '#22c55e', label: `${onlineCount} online` },
-              { icon: 'hardware-chip-outline', color: colors.primary, label: `CPU ${resources['cpu-load']}%` },
-              { icon: 'pie-chart-outline', color: colors.primary, label: `RAM ${Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/${Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB` },
-              { icon: 'time-outline', color: colors.primary, label: formatUptimeAPI(resources['uptime']) },
-              ...(getTemperature() ? [{ icon: 'thermometer-outline', color: '#ef4444', label: `${getTemperature()}°C` }] : []),
-            ].map((chip, i) => (
-              <View key={i} style={[styles.statChip, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
-                <Ionicons name={chip.icon as any} size={10} color={chip.color} />
-                <Text style={[styles.statChipText, { color: colors.foreground }]}>{chip.label}</Text>
-              </View>
-            ))}
-          </ScrollView>
+      {/* Status Line */}
+      {isConnected && resources ? (
+        <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>
+              Active Profile: <Text style={{ color: colors.foreground }}>{activeRouter?.name || activeRouter?.ip}</Text>
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
 
-          {/* Device name — separate line */}
-          {resources['board-name'] && (
-            <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 6 }}>
-              <View style={[styles.statChip, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
-                <Ionicons name="cube-outline" size={10} color={colors.textMuted} />
-                <Text style={[styles.statChipText, { color: colors.textMuted }]}>{resources['board-name']}</Text>
-              </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name="hardware-chip-outline" size={11} color={colors.textMuted} />
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                RAM: <Text style={{ color: colors.foreground }}>{Math.round((parseInt(resources['total-memory']) - parseInt(resources['free-memory'])) / (1024 * 1024))}/{Math.round(parseInt(resources['total-memory']) / (1024 * 1024))}MB</Text>
+              </Text>
             </View>
-          )}
+            <Text style={{ fontSize: 11, color: colors.glassBorder }}>|</Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name="time-outline" size={11} color={colors.textMuted} />
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                Uptime: <Text style={{ color: colors.foreground }}>{formatUptimeAPI(resources['uptime'])}</Text>
+              </Text>
+            </View>
+          </View>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
+            <Text style={{ fontSize: 11, color: colors.foreground, fontWeight: '500' }}>
+              {resources['board-name'] || 'router'}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} />
+            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
+              {activeRouter ? `${activeRouter.name || activeRouter.ip} · ` : ''}
+              <Text style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>{isConnected ? 'Online' : 'Offline'}</Text>
+            </Text>
+          </View>
         </View>
       )}
 
@@ -241,16 +238,17 @@ function AppInner() {
               onPress={() => handleTabPress(tab.key, index)}
               activeOpacity={0.65}
             >
-              <View style={styles.tabIconPill}>
+              <View style={{ paddingVertical: 4, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons
                   name={tab.icon as any}
-                  size={active ? 22 : 20}
+                  size={20}
                   color={active ? colors.primary : colors.textMuted}
                 />
               </View>
               <Text style={[styles.tabText, {
                 color: active ? colors.primary : colors.textMuted,
-                fontWeight: active ? '700' : '400',
+                fontWeight: active ? '600' : '400',
+                fontSize: 10,
               }]}>
                 {tab.label}
               </Text>
@@ -258,25 +256,6 @@ function AppInner() {
           );
         })}
       </View>
-
-      {/* Help Modal */}
-      <Modal
-        visible={showHelp}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowHelp(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-          {/* Modal header */}
-          <View style={[styles.modalHeader, { backgroundColor: colors.background, borderBottomColor: colors.glassBorder, paddingTop: insets.top || 16 }]}>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>Setup Guide</Text>
-            <TouchableOpacity onPress={() => setShowHelp(false)} style={styles.helpBtn}>
-              <Ionicons name="close-circle-outline" size={24} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-          <HelpScreen />
-        </View>
-      </Modal>
     </View>
   );
 }

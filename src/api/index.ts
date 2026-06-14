@@ -72,7 +72,6 @@ export const fetchProfilesAPI = async () => {
     throw new Error(`Failed to fetch profiles (${res.status}): ${txt.substring(0, 100)}`);
   }
   const data = await res.json();
-  console.log("FETCHED_PROFILES_DATA:", JSON.stringify(data));
 
   const parsedData = data.map((p: any) => {
     let comment = p.comment || '';
@@ -248,8 +247,6 @@ export const createProfileAPI = async (name: string, validity: string, limitMB?:
   if (script) {
     body["on-login"] = script;
   }
-
-  console.log("SENDING_CREATE_PROFILE_BODY:", JSON.stringify(body));
 
   const res = await fetch(`${baseUrl}/rest/ip/hotspot/user/profile/add`, {
     method: 'POST',

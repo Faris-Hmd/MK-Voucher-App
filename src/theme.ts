@@ -14,29 +14,29 @@ export type ColorPalette = {
 };
 
 export const darkColors: ColorPalette = {
-  background: '#09090b',
-  foreground: '#f4f4f5',
+  background: '#141414',
+  foreground: '#ececec',
   primary: '#3b82f6',
   primaryHover: '#2563eb',
-  accent: '#10b981',
-  secondary: '#18181b',
-  cardBg: '#18181b',
-  glassBorder: 'rgba(255, 255, 255, 0.04)',
-  textMuted: '#71717a',
-  inputBg: '#1c1c1f',
+  accent: '#22c55e',
+  secondary: '#242424',
+  cardBg: '#1e1e1e',
+  glassBorder: 'rgba(255, 255, 255, 0.08)',
+  textMuted: '#8e9196',
+  inputBg: '#242424',
 };
 
 export const lightColors: ColorPalette = {
-  background: '#fafafa',
-  foreground: '#09090b',
-  primary: '#2563eb',
-  primaryHover: '#1d4ed8',
-  accent: '#10b981',
-  secondary: '#f4f4f5',
+  background: '#ffffff',
+  foreground: '#171717',
+  primary: '#171717',
+  primaryHover: '#000000',
+  accent: '#22c55e',
+  secondary: '#f5f5f5',
   cardBg: '#ffffff',
-  glassBorder: 'rgba(0, 0, 0, 0.03)',
-  textMuted: '#71717a',
-  inputBg: '#f4f4f5',
+  glassBorder: 'rgba(0, 0, 0, 0.08)',
+  textMuted: '#737373',
+  inputBg: '#f5f5f5',
 };
 
 // Legacy export so any file not yet using the context still compiles

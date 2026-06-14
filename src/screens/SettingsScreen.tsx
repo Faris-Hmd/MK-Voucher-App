@@ -238,8 +238,8 @@ export default function SettingsScreen({
         )}
 
         {/* Appearance card */}
-        <View style={[styles.card, { padding: 12, marginBottom: 16 }]}>
-          <Text style={[styles.label, { fontSize: 11, marginBottom: 10 }]}>Appearance</Text>
+        <View style={[styles.card, { padding: 14, borderWidth: 1.5, borderColor: colors.glassBorder, marginBottom: 16 }]}>
+          <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12 }]}>Appearance</Text>
           <TouchableOpacity
             onPress={toggleTheme}
             style={{
@@ -255,18 +255,18 @@ export default function SettingsScreen({
                 size={18}
                 color={colors.primary}
               />
-              <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '500' }}>
+              <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
                 {mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
               </Text>
             </View>
             <View style={{
-              width: 38, height: 22, borderRadius: 11,
-              backgroundColor: mode === 'dark' ? colors.primary : colors.secondary,
+              width: 42, height: 24, borderRadius: 12,
+              backgroundColor: mode === 'dark' ? colors.primary : colors.textMuted + '33',
               justifyContent: 'center',
               padding: 2,
             }}>
               <View style={{
-                width: 18, height: 18, borderRadius: 9,
+                width: 20, height: 20, borderRadius: 10,
                 backgroundColor: '#fff',
                 alignSelf: mode === 'dark' ? 'flex-end' : 'flex-start',
               }} />
@@ -275,15 +275,15 @@ export default function SettingsScreen({
         </View>
 
         {/* Saved Devices */}
-        <View style={[styles.card, { padding: 12, marginBottom: 16 }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <Text style={[styles.label, { fontSize: 11, marginBottom: 0 }]}>Saved Routers</Text>
+        <View style={[styles.card, { padding: 14, borderWidth: 1.5, borderColor: colors.glassBorder, marginBottom: 16 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 0 }]}>Saved Routers</Text>
             <TouchableOpacity 
               onPress={handleAddNewClick}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
               <Ionicons name="add-circle-outline" size={15} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '500' }}>Add New</Text>
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Add New</Text>
             </TouchableOpacity>
           </View>
 
@@ -313,7 +313,7 @@ export default function SettingsScreen({
                     paddingHorizontal: 12,
                     borderRadius: 12,
                     backgroundColor: colors.secondary,
-                    borderWidth: StyleSheet.hairlineWidth,
+                    borderWidth: isActive ? 2 : 1.5,
                     borderColor: isActive ? colors.primary : colors.glassBorder,
                     marginBottom: 8,
                   }}
@@ -328,7 +328,7 @@ export default function SettingsScreen({
 
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500' }}>
+                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
                           {router.name || router.ip}
                         </Text>
                         {isActive && (
@@ -337,8 +337,10 @@ export default function SettingsScreen({
                             paddingHorizontal: 5,
                             paddingVertical: 1,
                             borderRadius: 4,
+                            borderWidth: 1,
+                            borderColor: 'rgba(59, 130, 246, 0.12)'
                           }}>
-                            <Text style={{ color: colors.primary, fontSize: 8, fontWeight: '500' }}>
+                            <Text style={{ color: colors.primary, fontSize: 8, fontWeight: '600' }}>
                               Active
                             </Text>
                           </View>
@@ -359,7 +361,9 @@ export default function SettingsScreen({
                         borderRadius: 8, 
                         backgroundColor: colors.inputBg,
                         alignItems: 'center', 
-                        justifyContent: 'center' 
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: colors.glassBorder
                       }}
                       onPress={() => handleStartEdit(router)}
                     >
@@ -373,7 +377,9 @@ export default function SettingsScreen({
                         borderRadius: 8, 
                         backgroundColor: 'rgba(239,68,68,0.06)', 
                         alignItems: 'center', 
-                        justifyContent: 'center' 
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: 'rgba(239,68,68,0.12)'
                       }}
                       onPress={() => handleDeleteRouter(router)}
                     >
@@ -432,11 +438,12 @@ export default function SettingsScreen({
         }}>
           <View style={[styles.card, { 
             padding: 16, 
-            borderWidth: StyleSheet.hairlineWidth,
+            borderWidth: 1.5,
             borderColor: colors.glassBorder,
+            backgroundColor: colors.cardBg
           }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={[styles.label, { fontSize: 15, fontWeight: '600', marginBottom: 0, color: colors.foreground }]}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.foreground }}>
                 {editingRouterId ? 'Edit Router' : 'Add New Router'}
               </Text>
               <TouchableOpacity onPress={handleCancelEdit} style={{ padding: 4 }}>
@@ -446,9 +453,9 @@ export default function SettingsScreen({
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 15 }}>
               <View style={{ marginBottom: 12 }}>
-                <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Device Name (Optional)</Text>
+                <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }]}>Device Name (Optional)</Text>
                 <TextInput 
-                  style={[styles.input, { height: 38, paddingHorizontal: 12, fontSize: 13, marginBottom: 0 }]} 
+                  style={[styles.input, { height: 42, borderRadius: 12, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 12, fontSize: 13, color: colors.foreground, marginBottom: 0 }]} 
                   value={deviceName} 
                   onChangeText={setDeviceName} 
                   placeholder="e.g. Main Router" 
@@ -458,9 +465,9 @@ export default function SettingsScreen({
 
               <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>IP Address</Text>
+                  <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }]}>IP Address</Text>
                   <TextInput 
-                    style={[styles.input, { height: 38, paddingHorizontal: 12, fontSize: 13, marginBottom: 0 }]} 
+                    style={[styles.input, { height: 42, borderRadius: 12, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 12, fontSize: 13, color: colors.foreground, marginBottom: 0 }]} 
                     value={ip} 
                     onChangeText={setIp} 
                     placeholder="192.168.1.1" 
@@ -470,9 +477,9 @@ export default function SettingsScreen({
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Wi-Fi Name</Text>
+                  <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }]}>Wi-Fi Name</Text>
                   <TextInput 
-                    style={[styles.input, { height: 38, paddingHorizontal: 12, fontSize: 13, marginBottom: 0 }]} 
+                    style={[styles.input, { height: 42, borderRadius: 12, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 12, fontSize: 13, color: colors.foreground, marginBottom: 0 }]} 
                     value={wifiName} 
                     onChangeText={setWifiName} 
                     placeholder="Wi-Fi Access" 
@@ -483,9 +490,9 @@ export default function SettingsScreen({
 
               <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Username</Text>
+                  <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }]}>Username</Text>
                   <TextInput 
-                    style={[styles.input, { height: 38, paddingHorizontal: 12, fontSize: 13, marginBottom: 0 }]} 
+                    style={[styles.input, { height: 42, borderRadius: 12, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 12, fontSize: 13, color: colors.foreground, marginBottom: 0 }]} 
                     value={user} 
                     onChangeText={setUser} 
                     placeholder="admin" 
@@ -494,9 +501,9 @@ export default function SettingsScreen({
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { fontSize: 11, marginBottom: 6 }]}>Password</Text>
+                  <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }]}>Password</Text>
                   <TextInput 
-                    style={[styles.input, { height: 38, paddingHorizontal: 12, fontSize: 13, marginBottom: 0 }]} 
+                    style={[styles.input, { height: 42, borderRadius: 12, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 12, fontSize: 13, color: colors.foreground, marginBottom: 0 }]} 
                     value={pass} 
                     onChangeText={setPass} 
                     secureTextEntry 
@@ -511,16 +518,16 @@ export default function SettingsScreen({
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity 
-                style={[styles.button, { flex: 1, height: 38, justifyContent: 'center', backgroundColor: colors.secondary, marginTop: 0 }]} 
+                style={{ flex: 1, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary }} 
                 onPress={handleCancelEdit}
               >
-                <Text style={[styles.buttonText, { fontSize: 13, fontWeight: '500', color: colors.foreground }]}>Cancel</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.foreground }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.button, { flex: 1, height: 38, justifyContent: 'center', backgroundColor: colors.primary, marginTop: 0 }]} 
+                style={{ flex: 1, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary }} 
                 onPress={handleSave}
               >
-                <Text style={[styles.buttonText, { fontSize: 13, fontWeight: '500', color: '#fff' }]}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>
                   {editingRouterId ? 'Save' : 'Add'}
                 </Text>
               </TouchableOpacity>

@@ -43,12 +43,12 @@ const DurationDropdown = ({
             alignItems: 'center',
             flexDirection: 'row',
             gap: 4,
-            height: 50,
+            height: 40,
           }]}
           onPress={openMenu}
           activeOpacity={0.7}
         >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>{value}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.foreground }}>{value}</Text>
           <Ionicons name="chevron-down" size={12} color={colors.textMuted} style={{ marginTop: 2 }} />
         </TouchableOpacity>
       </View>
@@ -110,24 +110,29 @@ const DurationDropdown = ({
 
 
 export default function VoucherProfilesScreen() {
-  const { colors, styles } = useTheme();
+  const { colors } = useTheme();
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showInlineCreate, setShowInlineCreate] = useState(false);
+  const [limitType, setLimitType] = useState<'time' | 'data'>('time');
   const [newProfileName, setNewProfileName] = useState('');
-  const [isUnlimited, setIsUnlimited] = useState(false);
   const [days, setDays] = useState('0');
   const [hours, setHours] = useState('1');
   const [minutes, setMinutes] = useState('0');
+  const [dataLimit, setDataLimit] = useState('');
+  const [printLabel, setPrintLabel] = useState('');
+
+  // Edit Modal State
   const [editModal, setEditModal] = useState(false);
   const [editTarget, setEditTarget] = useState<Profile | null>(null);
   const [editName, setEditName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Script Modal State
   const [scriptModal, setScriptModal] = useState(false);
-  const [dataLimit, setDataLimit] = useState('');
-  const [printLabel, setPrintLabel] = useState('');
-  const [createModal, setCreateModal] = useState(false);
+  const [scriptTarget, setScriptTarget] = useState<any>(null);
 
   useEffect(() => { loadProfiles(); }, []);
 
@@ -139,7 +144,7 @@ export default function VoucherProfilesScreen() {
   };
 
   const getValidity = () => {
-    if (isUnlimited) return 'unlimited';
+    if (limitType === 'data') return 'unlimited';
     let v = '';
     if (days && days !== '0') v += `${days}d`;
     if (hours && hours !== '0') v += `${hours}h`;
@@ -149,21 +154,34 @@ export default function VoucherProfilesScreen() {
 
   const handleCreate = async () => {
     if (!newProfileName.trim()) { Alert.alert('Error', 'Profile name is required.'); return; }
-    const limitMB = dataLimit.trim() ? parseInt(dataLimit.trim(), 10) : undefined;
-    if (limitMB !== undefined && (isNaN(limitMB) || limitMB <= 0)) {
-      Alert.alert('Error', 'Invalid data limit. Please enter a positive number.');
-      return;
+    
+    let limitMB: number | undefined;
+    if (limitType === 'data') {
+      if (!dataLimit.trim()) {
+        Alert.alert('Error', 'Data limit is required for Data-Based profiles.');
+        return;
+      }
+      limitMB = parseInt(dataLimit.trim(), 10);
+      if (isNaN(limitMB) || limitMB <= 0) {
+        Alert.alert('Error', 'Invalid data limit. Please enter a positive number.');
+        return;
+      }
     }
+
     setIsCreating(true);
     try {
-      await createProfileAPI(newProfileName.trim(), getValidity(), limitMB, isUnlimited, printLabel.trim());
+      const validity = limitType === 'time' ? getValidity() : 'unlimited';
+      const isUnlimitedTime = limitType === 'data';
+      await createProfileAPI(newProfileName.trim(), validity, limitMB, isUnlimitedTime, printLabel.trim());
+      
+      // Reset state
       setNewProfileName(''); 
-      setIsUnlimited(false); 
       setDays('0'); 
       setHours('1'); 
       setMinutes('0');
       setDataLimit('');
       setPrintLabel('');
+      setShowInlineCreate(false);
       await loadProfiles();
     } catch (err: any) { Alert.alert('Error', err.message); }
     finally { setIsCreating(false); }
@@ -189,6 +207,11 @@ export default function VoucherProfilesScreen() {
     finally { setIsSaving(false); }
   };
 
+  const handleOpenScript = (p: any) => {
+    setScriptTarget(p);
+    setScriptModal(true);
+  };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -196,256 +219,197 @@ export default function VoucherProfilesScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
       <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: 20 }}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Profiles list header */}
-      <View style={[local.rowBetween, { marginBottom: 16 }]}>
-        <Text style={[local.sectionLabel, { color: colors.textMuted, marginBottom: 0 }]}>
-          PROFILES ({profiles.length})
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            onPress={() => setCreateModal(true)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              backgroundColor: colors.primary + '14',
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="add-circle" size={14} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Add Profile</Text>
-          </TouchableOpacity>
+        style={{ flex: 1, backgroundColor: colors.background }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Profiles list header */}
+        <View style={[local.rowBetween, { marginBottom: 16 }]}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            PROFILES ({profiles.length})
+          </Text>
           <TouchableOpacity onPress={loadProfiles} disabled={isLoading} style={{ padding: 4 }}>
-            {isLoading
-              ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Ionicons name="refresh" size={15} color={colors.primary} />}
+            {isLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="refresh" size={16} color={colors.primary} />
+            )}
           </TouchableOpacity>
         </View>
-      </View>
 
-      {profiles.length === 0 && !isLoading && (
-        <View style={[local.emptyBox, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
-          <Ionicons name="layers-outline" size={32} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}>No profiles yet.</Text>
-        </View>
-      )}
-
-      {profiles.map((p, i) => {
-        const comment = (p as any).comment || '';
-        const parts = comment.split('|');
-        const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
-        const endPart = parts.find((pt: string) => pt.startsWith('END_BY_USAGE:'));
-        const labelPart = parts.find((pt: string) => pt.startsWith('PRINT_LABEL:'));
-        
-        const limitText = limitPart ? `${limitPart.split(':')[1]} MB` : '';
-        const labelText = labelPart ? labelPart.split(':')[1] : '';
-
-        return (
-          <View
-            key={p['.id']}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: colors.cardBg,
-              borderWidth: 1,
-              borderColor: colors.glassBorder,
-              borderRadius: 16,
-              padding: 14,
-              marginBottom: 10,
-            }}
-          >
-            {/* Left Icon Badge */}
-            <View style={{
-              width: 42,
-              height: 42,
-              borderRadius: 12,
-              backgroundColor: colors.primary + '12',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12,
-            }}>
-              <Ionicons name="ticket-outline" size={20} color={colors.primary} />
-            </View>
-
-            {/* Center Info */}
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>
-                {p.name}
-              </Text>
-              
-              {/* Badges / Subtexts */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                {labelText ? (
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.primary + '0a',
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: colors.primary + '1a',
-                  }}>
-                    <Ionicons name="pricetag-outline" size={10} color={colors.primary} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '600' }}>
-                      {labelText}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {limitText ? (
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: 'rgba(16,185,129,0.06)',
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: 'rgba(16,185,129,0.15)',
-                  }}>
-                    <Ionicons name="download-outline" size={10} color="#10b981" style={{ marginRight: 4 }} />
-                    <Text style={{ color: '#10b981', fontSize: 10, fontWeight: '600' }}>
-                      {limitText}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {endPart ? (
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: 'rgba(245,158,11,0.06)',
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: 'rgba(245,158,11,0.15)',
-                  }}>
-                    <Ionicons name="stopwatch-outline" size={10} color="#f59e0b" style={{ marginRight: 4 }} />
-                    <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '600' }}>
-                      Usage Stop
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TouchableOpacity
-                onPress={() => { setEditTarget(p); setEditName(p.name); setEditModal(true); }}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: colors.glassBorder,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: colors.inputBg,
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="pencil-outline" size={14} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDelete(p)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: 'rgba(239,68,68,0.15)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'rgba(239,68,68,0.08)',
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="trash-outline" size={14} color="#ef4444" />
-              </TouchableOpacity>
-            </View>
+        {profiles.length === 0 && !isLoading && !showInlineCreate && (
+          <View style={[local.emptyBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+            <Ionicons name="server-outline" size={32} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}>No profiles yet.</Text>
           </View>
-        );
-      })}
+        )}
 
-      {/* Create Profile Modal */}
-      <Modal visible={createModal} transparent animationType="slide" onRequestClose={() => setCreateModal(false)}>
-        <View style={local.overlay}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[local.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}
-          >
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-              <View style={[local.cardHeader, { marginBottom: 16 }]}>
-                <View style={[local.cardIconBox, { backgroundColor: colors.primary + '18' }]}>
-                  <Ionicons name="add" size={16} color={colors.primary} />
+        {/* Profile items */}
+        <View style={{ gap: 8, marginBottom: 12 }}>
+          {profiles.map((p) => {
+            const comment = (p as any).comment || '';
+            const parts = comment.split('|');
+            const limitPart = parts.find((pt: string) => pt.startsWith('LIMIT:'));
+            const endPart = parts.find((pt: string) => pt.startsWith('END_BY_USAGE:'));
+            const labelPart = parts.find((pt: string) => pt.startsWith('PRINT_LABEL:'));
+            
+            const limitText = limitPart ? `${limitPart.split(':')[1]} MB` : '';
+            const labelText = labelPart ? labelPart.split(':')[1] : '';
+            const isDataBased = !!limitText;
+
+            return (
+              <View
+                key={p['.id']}
+                style={[local.profileCard, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}
+              >
+                {/* Left Icon Badge */}
+                <View style={[local.profileIconBox, { backgroundColor: colors.secondary }]}>
+                  <Ionicons name={(isDataBased ? "server-outline" : "time-outline") as any} size={18} color={colors.primary} />
                 </View>
-                <Text style={[local.cardTitle, { color: colors.foreground }]}>New Profile</Text>
-              </View>
 
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
-                  Profile Name
+                {/* Center Info */}
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
+                    {p.name}
+                  </Text>
+                  
+                  {/* Badges / Subtexts */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    {labelText ? (
+                      <View style={[local.badge, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
+                        <Ionicons name="pricetag-outline" size={9} color={colors.textMuted} style={{ marginRight: 3 }} />
+                        <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: '600' }}>
+                          {labelText}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {limitText ? (
+                      <View style={[local.badge, { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.12)' }]}>
+                        <Ionicons name="download-outline" size={9} color="#22c55e" style={{ marginRight: 3 }} />
+                        <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '600' }}>
+                          {limitText}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[local.badge, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}>
+                        <Ionicons name="time-outline" size={9} color={colors.textMuted} style={{ marginRight: 3 }} />
+                        <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: '600' }}>
+                          Time Uptime
+                        </Text>
+                      </View>
+                    )}
+
+                    {endPart ? (
+                      <View style={[local.badge, { backgroundColor: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.12)' }]}>
+                        <Ionicons name="stopwatch-outline" size={9} color="#f59e0b" style={{ marginRight: 3 }} />
+                        <Text style={{ color: '#f59e0b', fontSize: 9, fontWeight: '600' }}>
+                          Usage Stop
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() => handleOpenScript(p)}
+                    style={[local.actionButton, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="code-working" size={13} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { setEditTarget(p); setEditName(p.name); setEditModal(true); }}
+                    style={[local.actionButton, { backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="pencil" size={13} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDelete(p)}
+                    style={[local.actionButton, { backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.12)' }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={13} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Inline Create Profile Form */}
+        {showInlineCreate ? (
+          <View style={[local.inlineCard, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+            <View style={[local.rowBetween, { marginBottom: 14 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground }}>
+                New Voucher Profile
+              </Text>
+              <TouchableOpacity onPress={() => setShowInlineCreate(false)} style={{ padding: 2 }}>
+                <Ionicons name="close" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Limit Type Select Segment Control */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+              <TouchableOpacity
+                onPress={() => setLimitType('time')}
+                style={[
+                  local.segmentButton,
+                  { backgroundColor: limitType === 'time' ? colors.primary + '0c' : colors.secondary, borderColor: limitType === 'time' ? colors.primary : colors.glassBorder }
+                ]}
+              >
+                <Ionicons name="time-outline" size={14} color={limitType === 'time' ? colors.primary : colors.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: limitType === 'time' ? colors.primary : colors.textMuted }}>
+                  Time-Based
                 </Text>
-                <TextInput
-                  style={[local.nameInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground, marginBottom: 0 }]}
-                  placeholder="e.g. 1 Hour"
-                  placeholderTextColor={colors.textMuted}
-                  value={newProfileName}
-                  onChangeText={setNewProfileName}
-                />
-              </View>
-
-              {/* Data Limit MB input */}
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
-                  Data Limit (MB)
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setLimitType('data')}
+                style={[
+                  local.segmentButton,
+                  { backgroundColor: limitType === 'data' ? colors.primary + '0c' : colors.secondary, borderColor: limitType === 'data' ? colors.primary : colors.glassBorder }
+                ]}
+              >
+                <Ionicons name={"server-outline" as any} size={14} color={limitType === 'data' ? colors.primary : colors.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: limitType === 'data' ? colors.primary : colors.textMuted }}>
+                  Data-Based
                 </Text>
-                <TextInput
-                  style={[local.nameInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground, marginBottom: 0 }]}
-                  placeholder="Optional, e.g. 500"
-                  placeholderTextColor={colors.textMuted}
-                  value={dataLimit}
-                  onChangeText={setDataLimit}
-                  keyboardType="numeric"
-                />
-              </View>
+              </TouchableOpacity>
+            </View>
 
-              {/* Print Label input */}
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
-                  Print Label
-                </Text>
-                <TextInput
-                  style={[local.nameInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground, marginBottom: 0 }]}
-                  placeholder="e.g. 1 Hour Voucher"
-                  placeholderTextColor={colors.textMuted}
-                  value={printLabel}
-                  onChangeText={setPrintLabel}
-                />
-              </View>
+            {/* Profile Name Input */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={local.inlineLabel}>Profile Name</Text>
+              <TextInput
+                style={[local.inlineInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground }]}
+                placeholder="e.g. 2 Hours"
+                placeholderTextColor={colors.textMuted}
+                value={newProfileName}
+                onChangeText={setNewProfileName}
+              />
+            </View>
 
-              {/* Unlimited time Switch */}
-              <View style={[local.switchRow, { borderColor: colors.glassBorder }]}>
-                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500' }}>Unlimited time (No timer)</Text>
-                <Switch
-                  value={isUnlimited} onValueChange={setIsUnlimited}
-                  trackColor={{ false: colors.inputBg, true: colors.primary }}
-                  thumbColor="#fff"
-                />
-              </View>
+            {/* Print Label Input */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={local.inlineLabel}>Print Label (printed on voucher)</Text>
+              <TextInput
+                style={[local.inlineInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground }]}
+                placeholder="e.g. 2 Hours Voucher"
+                placeholderTextColor={colors.textMuted}
+                value={printLabel}
+                onChangeText={setPrintLabel}
+              />
+            </View>
 
-              {!isUnlimited && (
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+            {/* Time-Based Selectors */}
+            {limitType === 'time' ? (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={local.inlineLabel}>Validity Duration</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
                   <DurationDropdown 
                     label="Days" 
                     value={days} 
@@ -465,125 +429,211 @@ export default function VoucherProfilesScreen() {
                     onSelect={setMinutes} 
                   />
                 </View>
-              )}
+              </View>
+            ) : (
+              /* Data-Based input */
+              <View style={{ marginBottom: 16 }}>
+                <Text style={local.inlineLabel}>Data Limit (MB)</Text>
+                <TextInput
+                  style={[local.inlineInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground }]}
+                  placeholder="e.g. 1024"
+                  placeholderTextColor={colors.textMuted}
+                  value={dataLimit}
+                  onChangeText={setDataLimit}
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
 
-              <View style={[local.rowBetween, { marginBottom: 16 }]}>
-                <TouchableOpacity onPress={() => setScriptModal(true)} style={local.scriptBtn}>
-                  <Ionicons name="code-working-outline" size={13} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>View Script</Text>
+            {/* Save and Cancel Actions */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={[local.formButton, { flex: 1, backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}
+                onPress={() => setShowInlineCreate(false)}
+              >
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[local.formButton, { flex: 1, backgroundColor: colors.primary, borderColor: colors.primary }, isCreating && { opacity: 0.6 }]}
+                onPress={handleCreate}
+                disabled={isCreating}
+              >
+                {isCreating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Save Profile</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          /* Dashed Button trigger */
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setShowInlineCreate(true)}
+            style={[local.dashedButton, { borderColor: colors.glassBorder, backgroundColor: colors.secondary + '44' }]}
+          >
+            <Ionicons name="add" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Create Profile</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Rename Modal */}
+        <Modal visible={editModal} transparent animationType="fade">
+          <View style={local.overlay}>
+            <View style={[local.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
+              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700', marginBottom: 14 }}>Rename Profile</Text>
+              <View style={{ marginBottom: 16 }}>
+                <Text style={local.inlineLabel}>Profile Name</Text>
+                <TextInput
+                  style={[local.inlineInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground, marginBottom: 0 }]}
+                  value={editName} onChangeText={setEditName} autoFocus
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[local.formButton, { flex: 1, backgroundColor: colors.secondary, borderColor: colors.glassBorder }]}
+                  onPress={() => setEditModal(false)}
+                >
+                  <Text style={{ color: colors.textMuted, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
                 </TouchableOpacity>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                  Validity: <Text style={{ color: colors.primary, fontWeight: '700' }}>{getValidity()}</Text>
+                <TouchableOpacity
+                  style={[local.formButton, { flex: 1, backgroundColor: colors.primary, borderColor: colors.primary }, isSaving && { opacity: 0.6 }]}
+                  onPress={handleSaveEdit} disabled={isSaving}
+                >
+                  {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Script Modal */}
+        <Modal visible={scriptModal} transparent animationType="slide">
+          <View style={local.overlay}>
+            <View style={[local.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, maxHeight: '80%' }]}>
+              <View style={[local.rowBetween, { marginBottom: 12 }]}>
+                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>MikroTik Script</Text>
+                <TouchableOpacity onPress={() => setScriptModal(false)}>
+                  <Ionicons name="close" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ backgroundColor: colors.inputBg, borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 11, lineHeight: 16 }}>
+                  {scriptTarget && (() => {
+                    const comment = scriptTarget.comment || '';
+                    const isData = comment.includes('LIMIT:');
+                    if (isData) {
+                      return '# Voucher only ends by usage. No wall-clock timeout script generated.';
+                    } else {
+                      const parts = comment.split('|');
+                      let validity = '1h'; // default fallback
+                      const timePart = parts.find((pt: string) => pt.startsWith('TIME:'));
+                      if (timePart) validity = timePart.split(':')[1];
+                      return generateProfileScript(validity) || '# No script needed for unlimited time validity.';
+                    }
+                  })()}
                 </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity
-                  style={[local.createBtn, { flex: 1, backgroundColor: colors.secondary, marginTop: 0 }]}
-                  onPress={() => setCreateModal(false)}
-                >
-                  <Text style={[local.createBtnText, { color: colors.foreground }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[local.createBtn, { flex: 1, backgroundColor: colors.primary, marginTop: 0 }, isCreating && { opacity: 0.6 }]}
-                  onPress={async () => {
-                    await handleCreate();
-                    setCreateModal(false);
-                  }}
-                  disabled={isCreating}
-                >
-                  {isCreating
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={local.createBtnText}>Create</Text>}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* Rename Modal */}
-      <Modal visible={editModal} transparent animationType="fade">
-        <View style={local.overlay}>
-          <View style={[local.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder }]}>
-            <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', marginBottom: 16 }}>Rename Profile</Text>
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
-                Profile Name
-              </Text>
-              <TextInput
-                style={[local.nameInput, { backgroundColor: colors.inputBg, borderColor: colors.glassBorder, color: colors.foreground, marginBottom: 0 }]}
-                value={editName} onChangeText={setEditName} autoFocus
-              />
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+              </ScrollView>
               <TouchableOpacity
-                style={[local.createBtn, { flex: 1, backgroundColor: colors.secondary }]}
-                onPress={() => setEditModal(false)}
+                style={[local.formButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={() => setScriptModal(false)}
               >
-                <Text style={{ color: colors.textMuted, fontWeight: '600' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[local.createBtn, { flex: 1, backgroundColor: colors.primary }, isSaving && { opacity: 0.6 }]}
-                onPress={handleSaveEdit} disabled={isSaving}
-              >
-                {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={local.createBtnText}>Save</Text>}
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Got it</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* Script Modal */}
-      <Modal visible={scriptModal} transparent animationType="slide">
-        <View style={local.overlay}>
-          <View style={[local.modalBox, { backgroundColor: colors.cardBg, borderColor: colors.glassBorder, maxHeight: '80%' }]}>
-            <View style={[local.rowBetween, { marginBottom: 14 }]}>
-              <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700' }}>MikroTik Script</Text>
-              <TouchableOpacity onPress={() => setScriptModal(false)}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ backgroundColor: colors.inputBg, borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <Text style={{ color: colors.foreground, fontFamily: 'monospace', fontSize: 11.5, lineHeight: 18 }}>
-                {isUnlimited 
-                  ? '# Voucher only ends by usage. No wall-clock timeout script generated.'
-                  : (generateProfileScript(getValidity()) || '# No script needed for unlimited time validity.')}
-              </Text>
-            </ScrollView>
-            <TouchableOpacity
-              style={[local.createBtn, { backgroundColor: colors.primary }]}
-              onPress={() => setScriptModal(false)}
-            >
-              <Text style={local.createBtnText}>Got it</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <View style={{ height: 50 }} />
+        <View style={{ height: 50 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const local = StyleSheet.create({
-  card: { borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 24 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-  cardIconBox: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { fontSize: 15, fontWeight: '700' },
-  nameInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 14 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 14 },
-  durationInput: { borderRadius: 12, borderWidth: 1, paddingVertical: 12, fontSize: 14, fontWeight: '600', width: '100%', textAlign: 'center' },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  scriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 14, borderRadius: 14, marginTop: 4 },
-  createBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 12 },
+  dashedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    marginTop: 8,
+  },
+  inlineCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    marginTop: 8,
+  },
+  inlineLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8e9196',
+    marginBottom: 5,
+  },
+  inlineInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  formButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  segmentButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   emptyBox: { alignItems: 'center', justifyContent: 'center', padding: 32, borderRadius: 16, borderWidth: 1, marginBottom: 8 },
-  profileCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, paddingVertical: 14, paddingRight: 14, overflow: 'hidden' },
-  profileAccent: { width: 4, height: '100%', borderRadius: 2, position: 'absolute', left: 0 },
-  iconBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center', borderColor: 'rgba(0,0,0,0)', marginLeft: 8, backgroundColor: 'transparent' },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    padding: 12,
+  },
+  profileIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  actionButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalBox: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 18, borderWidth: 1 },
+  modalBox: { width: '100%', maxWidth: 360, padding: 16, borderRadius: 16, borderWidth: 1 },
+  durationInput: { borderRadius: 10, borderWidth: 1, paddingVertical: 8, width: '100%' },
 });
