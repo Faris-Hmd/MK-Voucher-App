@@ -1,7 +1,7 @@
 import React from 'react';
 import { requireOptionalNativeModule } from 'expo';
 import { StatusBar } from 'expo-status-bar';
-import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator, ScrollView, TextInput } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator, ScrollView, TextInput, Alert } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 
 try {
@@ -17,7 +17,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
-import { loadConfig, saveConfig, saveSavedRouters, loadSavedRouters, RouterConfig } from './src/store';
+import { 
+  loadConfig, 
+  saveConfig, 
+  saveSavedRouters, 
+  loadSavedRouters, 
+  syncSavedRoutersToFirestore, 
+  loadSavedRoutersFromFirestore, 
+  RouterConfig 
+} from './src/store';
 
 import { 
   useFonts,
@@ -31,24 +39,24 @@ import {
 import GenerateScreen from './src/screens/GenerateScreen';
 import ListScreen from './src/screens/ListScreen';
 import UsersScreen from './src/screens/UsersScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
 import VoucherProfilesScreen from './src/screens/VoucherProfilesScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import PendingScreen from './src/screens/PendingScreen';
+import RouterSelectionScreen from './src/screens/RouterSelectionScreen';
+import WireGuard, { compileWgConfig } from './src/native/WireGuard';
 
 import PagerView from 'react-native-pager-view';
 import { getAuth, onAuthStateChanged, FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from '@react-native-firebase/firestore';
 
-type Tab = 'generate' | 'profiles' | 'list' | 'users' | 'settings';
+type Tab = 'generate' | 'profiles' | 'list' | 'users';
 
 const tabs: { key: Tab; label: string; icon: string }[] = [
   { key: 'generate', label: 'Vouchers',  icon: 'ticket-outline' },
   { key: 'profiles', label: 'Profiles',  icon: 'server-outline' },
   { key: 'list',     label: 'Batch',     icon: 'layers-outline' },
   { key: 'users',    label: 'Users',     icon: 'people-outline' },
-  { key: 'settings', label: 'Settings',  icon: 'settings-outline' },
 ];
 
 const TAB_TITLES: Record<Tab, string> = {
@@ -56,40 +64,71 @@ const TAB_TITLES: Record<Tab, string> = {
   profiles: 'Profiles',
   list:     'Batch & Print',
   users:    'Users',
-  settings: 'Settings',
 };
 
 function AppInner() {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [isRouterConnected, setIsRouterConnected] = useState<boolean>(false);
   const [activeRouter, setActiveRouter] = useState<RouterConfig | null>(null);
+  const [savedRouters, setSavedRouters] = useState<RouterConfig[]>([]);
+  const [isAutoConnecting, setIsAutoConnecting] = useState<boolean>(true);
   const [resources, setResources] = useState<any>(null);
   const [health, setHealth] = useState<any>(null);
   const [onlineCount, setOnlineCount] = useState<number>(0);
+  
   const checkInterval = useRef<any>(null);
   const pagerRef = useRef<PagerView>(null);
   const insets = useSafeAreaInsets();
   const { mode, colors } = useTheme();
 
+  // Load list and auto-connect on mount
   useEffect(() => {
-    checkStatus();
-  }, [activeRouter?.id]);
+    (async () => {
+      // 1. Load local saved routers
+      const localRouters = await loadSavedRouters();
+      setSavedRouters(localRouters);
 
-  useEffect(() => {
-    checkStatus();
-    checkInterval.current = setInterval(checkStatus, 60000);
-    return () => clearInterval(checkInterval.current);
+      // 2. Load Firestore saved routers
+      const email = getAuth().currentUser?.email;
+      if (email) {
+        try {
+          const fbRouters = await loadSavedRoutersFromFirestore(email);
+          if (fbRouters) {
+            if (fbRouters.length > 0) {
+              setSavedRouters(fbRouters);
+              await saveSavedRouters(fbRouters);
+            } else if (localRouters.length > 0) {
+              await syncSavedRoutersToFirestore(email, localRouters);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to sync saved routers with Firestore:', err);
+        }
+      }
+
+      setIsAutoConnecting(false);
+    })();
   }, []);
 
+  // Set up periodic connection & status checking
   useEffect(() => {
-    checkStatus();
+    if (isRouterConnected) {
+      checkStatus();
+      checkInterval.current = setInterval(checkStatus, 60000);
+      return () => clearInterval(checkInterval.current);
+    }
+  }, [isRouterConnected, activeRouter?.id]);
+
+  useEffect(() => {
+    if (isRouterConnected) {
+      checkStatus();
+    }
   }, [activeTab]);
 
   const checkStatus = async () => {
+    if (!isRouterConnected || !activeRouter) return;
     try {
-      const config = await loadConfig();
-      setActiveRouter(config);
-
       const status = await checkConnectionAPI();
       setIsConnected(status);
       if (status) {
@@ -114,7 +153,164 @@ function AppInner() {
     }
   };
 
+  const updateSavedRouters = async (routers: RouterConfig[]) => {
+    setSavedRouters(routers);
+    await saveSavedRouters(routers);
+    const email = getAuth().currentUser?.email;
+    if (email) {
+      await syncSavedRoutersToFirestore(email, routers);
+    }
+  };
 
+  const connectRouter = async (router: RouterConfig, useVpn: boolean, checkAborted?: () => boolean): Promise<boolean> => {
+    if (checkAborted && checkAborted()) return false;
+
+    if (useVpn) {
+      if (!router.wgClientPrivateKey || !router.wgServerPublicKey || !router.wgEndpointHost) {
+        Alert.alert('VPN Configuration Missing', 'Please configure the WireGuard VPN settings for this router first.');
+        return false;
+      }
+      
+      const cleanPriv = router.wgClientPrivateKey.replace(/[^A-Za-z0-9+/=]/g, '').trim();
+      const cleanPub = router.wgServerPublicKey.replace(/[^A-Za-z0-9+/=]/g, '').trim();
+      const base64KeyRegex = /^[A-Za-z0-9+/]{43}=$/;
+
+      if (!base64KeyRegex.test(cleanPriv)) {
+        Alert.alert('Invalid Private Key', 'The Client Private Key is not a valid 44-character Base64 key.');
+        return false;
+      }
+      if (!base64KeyRegex.test(cleanPub)) {
+        Alert.alert('Invalid Public Key', 'The Server Public Key is not a valid 44-character Base64 key.');
+        return false;
+      }
+
+      if (checkAborted && checkAborted()) return false;
+
+      try {
+        const confText = compileWgConfig({
+          privateKey: cleanPriv,
+          address: router.wgClientIp || '10.88.0.2/24',
+          dns: router.vpnIp || '10.88.0.1',
+          publicKey: cleanPub,
+          allowedIps: router.wgAllowedIps || '0.0.0.0/0',
+          endpoint: `${router.wgEndpointHost}:${router.wgEndpointPort || '13231'}`
+        });
+        await WireGuard.connect(confText);
+      } catch (err: any) {
+        if (checkAborted && checkAborted()) return false;
+        Alert.alert('VPN Connection Failed', err.message || 'Could not establish connection to the WireGuard tunnel.');
+        return false;
+      }
+    } else {
+      try {
+        await WireGuard.disconnect();
+      } catch (err) {
+        console.warn('Failed to disconnect VPN:', err);
+      }
+    }
+
+    if (checkAborted && checkAborted()) {
+      if (useVpn) {
+        try { await WireGuard.disconnect(); } catch (e) {}
+      }
+      return false;
+    }
+
+    // Write to current config storage
+    const targetConfig = { ...router, useVpn };
+    await saveConfig(targetConfig);
+    setActiveRouter(targetConfig);
+
+    // Verify router connectivity (try up to 3 times on VPN to account for handshake lag)
+    let verifySuccess = false;
+    const maxRetries = useVpn ? 3 : 1;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (checkAborted && checkAborted()) {
+        if (useVpn) {
+          try { await WireGuard.disconnect(); } catch (e) {}
+        }
+        return false;
+      }
+      const status = await checkConnectionAPI();
+      if (status) {
+        verifySuccess = true;
+        break;
+      }
+      if (attempt < maxRetries) {
+        for (let delay = 0; delay < 2000; delay += 200) {
+          if (checkAborted && checkAborted()) {
+            if (useVpn) {
+              try { await WireGuard.disconnect(); } catch (e) {}
+            }
+            return false;
+          }
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+    }
+
+    if (checkAborted && checkAborted()) {
+      if (useVpn) {
+        try { await WireGuard.disconnect(); } catch (e) {}
+      }
+      return false;
+    }
+
+    if (verifySuccess) {
+      setIsConnected(true);
+      setIsRouterConnected(true);
+      setIsAutoConnecting(false);
+      
+      // Load initial resources
+      try {
+        const [res, h, active] = await Promise.all([
+          fetchSystemResourcesAPI(),
+          fetchSystemHealthAPI(),
+          fetchActiveSessionsAPI().catch(() => [])
+        ]);
+        setResources(res);
+        setHealth(h);
+        setOnlineCount(Array.isArray(active) ? active.length : 0);
+      } catch (e) {
+        console.warn('Failed to fetch initial router resources:', e);
+      }
+
+      // Sync choice back to the saved routers list
+      setSavedRouters(prev => {
+        const updatedList = prev.map(r => r.id === router.id ? { ...r, useVpn } : r);
+        saveSavedRouters(updatedList);
+        const email = getAuth().currentUser?.email;
+        if (email) {
+          syncSavedRoutersToFirestore(email, updatedList);
+        }
+        return updatedList;
+      });
+      return true;
+    } else {
+      // Clean up VPN on failure
+      if (useVpn) {
+        try {
+          await WireGuard.disconnect();
+        } catch (e) {}
+      }
+      setIsConnected(false);
+      setIsRouterConnected(false);
+      return false;
+    }
+  };
+
+  const disconnectRouter = async () => {
+    try {
+      await WireGuard.disconnect();
+    } catch (e) {}
+    await saveConfig(null as any);
+    setActiveRouter(null);
+    setIsConnected(false);
+    setIsRouterConnected(false);
+    setResources(null);
+    setHealth(null);
+    setOnlineCount(0);
+  };
 
   const getTemperature = () => {
     if (!health) return null;
@@ -135,6 +331,29 @@ function AppInner() {
     setActiveTab(tabs[index].key);
   };
 
+  // Render Gate 1: Auto-connecting Screen
+  if (isAutoConnecting) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', gap: 15 }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>Loading your router configurations...</Text>
+      </View>
+    );
+  }
+
+  // Render Gate 2: Welcome / Router Selection Screen
+  if (!isRouterConnected) {
+    return (
+      <RouterSelectionScreen
+        userEmail={getAuth().currentUser?.displayName || getAuth().currentUser?.email || undefined}
+        savedRouters={savedRouters}
+        onUpdateSavedRouters={updateSavedRouters}
+        onConnectRouter={connectRouter}
+      />
+    );
+  }
+
+  // Render Gate 3: App Inner management view
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -154,18 +373,47 @@ function AppInner() {
             <Ionicons name="ticket" size={20} color="#fff" />
           </View>
           <View style={{ justifyContent: 'center' }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground, letterSpacing: -0.3 }}>HotSpot Manager</Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginTop: 1 }}>{TAB_TITLES[activeTab]}</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground, letterSpacing: -0.3 }}>{TAB_TITLES[activeTab]}</Text>
           </View>
         </View>
 
-        {/* Right Side: Active Profile Name & Status Dot */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} />
-          <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500' }}>
-            <Text style={{ color: colors.foreground }}>{activeRouter ? (activeRouter.name || activeRouter.ip) : 'router'}</Text>
-            {isConnected && resources?.['board-name'] ? ` (${resources['board-name']})` : ''}
-          </Text>
+        {/* Right Side: Active Profile Name, Status Dot & Switch router button */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            gap: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 5,
+            borderRadius: 8,
+            backgroundColor: colors.cardBg,
+            borderWidth: 1.2,
+            borderColor: colors.glassBorder
+          }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} />
+            <Text style={{ fontSize: 11, color: colors.foreground, fontWeight: '600', maxWidth: 85 }} numberOfLines={1}>
+              {activeRouter ? (activeRouter.name || activeRouter.ip) : 'Router'}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={disconnectRouter}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+              borderRadius: 8,
+              backgroundColor: colors.primary + '15',
+              borderWidth: 1.2,
+              borderColor: colors.primary,
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="swap-horizontal" size={12} color={colors.primary} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Switch</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -227,14 +475,6 @@ function AppInner() {
         <View key="2"><VoucherProfilesScreen /></View>
         <View key="3"><ListScreen /></View>
         <View key="4"><UsersScreen /></View>
-        <View key="5">
-          <SettingsScreen 
-            onSave={checkStatus} 
-            activeRouter={activeRouter}
-            setActiveRouter={setActiveRouter}
-            userEmail={getAuth().currentUser?.email || undefined}
-          />
-        </View>
       </PagerView>
 
       {/* Bottom Navigation Bar */}
