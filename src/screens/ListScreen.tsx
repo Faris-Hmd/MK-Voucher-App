@@ -808,19 +808,39 @@ export default function ListScreen() {
           </View>
 
           {vouchers.length > 0 && (
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-              <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>Total</Text>
-                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', marginTop: 2 }}>{stats.totalGenerated}</Text>
-              </View>
-              <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '500' }}>Unused</Text>
-                <Text style={{ color: '#22c55e', fontSize: 15, fontWeight: '600', marginTop: 2 }}>{stats.totalAvailable}</Text>
-              </View>
-              <View style={{ flex: 1, backgroundColor: colors.secondary, padding: 10, borderRadius: 10, alignItems: 'center' }}>
-                <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '500' }}>Active</Text>
-                <Text style={{ color: '#f59e0b', fontSize: 15, fontWeight: '600', marginTop: 2 }}>{stats.totalActive}</Text>
-              </View>
+            // Batch Overview — v0 style: 3-col large numbers in a rounded bordered card
+            <View style={{
+              flexDirection: 'row',
+              backgroundColor: colors.cardBg,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: colors.glassBorder,
+              marginBottom: 20,
+              paddingVertical: 12,
+            }}>
+              {[
+                { label: 'Total', value: stats.totalGenerated, color: colors.foreground },
+                { label: 'Unused', value: stats.totalAvailable, color: '#22c55e' },
+                { label: 'Active', value: stats.totalActive, color: '#f59e0b' },
+              ].map((stat, i, arr) => (
+                <View
+                  key={stat.label}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    borderRightWidth: i < arr.length - 1 ? 1 : 0,
+                    borderRightColor: colors.glassBorder,
+                    gap: 2,
+                  }}
+                >
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: stat.color, letterSpacing: -0.5 }}>
+                    {stat.value}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textMuted }}>
+                    {stat.label}
+                  </Text>
+                </View>
+              ))}
             </View>
           )}
 
@@ -866,186 +886,119 @@ export default function ListScreen() {
             </View>
           ) : null}
 
-          {Object.entries(grouped).map(([prof, batches]) => {
-            let profTotal = 0;
-            let profUnused = 0;
-            let profActive = 0;
+          {Object.entries(grouped)
+            .filter(([prof]) => prof !== 'default')
+            .sort(([a], [b]) => a.localeCompare(b))
+            .flatMap(([prof, batches]) =>
+              Object.entries(batches)
+                .sort(([a], [b]) => b.localeCompare(a))
+                .map(([comment, users]) => {
+                  const groupKey = `${prof}-${comment}`;
+                  const originalCountMatch = comment.match(/\|\s*(\d{4})$/);
+                  const originalCount = originalCountMatch ? parseInt(originalCountMatch[1]) : users.length;
+                  const unusedCount = users.filter((u: any) => !schedulers.some((s: any) => s.name === `kill_${u.name}`)).length;
+                  const activeCount = users.filter((u: any) => schedulers.some((s: any) => s.name === `kill_${u.name}`)).length;
+                  const formattedTime = formatBatchTime(comment);
+                  const firstUser = users[0];
+                  const limitBytes = firstUser?.['limit-bytes-total'] ? parseInt(firstUser['limit-bytes-total']) : 0;
 
-            Object.entries(batches).forEach(([comment, users]) => {
-              const originalCountMatch = comment.match(/\|\s*(\d{4})$/);
-              const originalCount = originalCountMatch ? parseInt(originalCountMatch[1]) : users.length;
-              
-              const availableCount = users.filter((u: any) => {
-                const hasKillSched = schedulers.some((s: any) => s.name === `kill_${u.name}`);
-                return !hasKillSched;
-              }).length;
-              
-              const activeCount = users.filter((u: any) => 
-                schedulers.some((s: any) => s.name === `kill_${u.name}`)
-              ).length;
-              
-              profTotal += originalCount;
-              profUnused += availableCount;
-              profActive += activeCount;
-            });
-
-            return (
-              <View key={prof} style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 14, gap: 12 }}>
-                  <View style={{ height: 1, flex: 1, backgroundColor: colors.glassBorder, opacity: 0.4 }} />
-                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>{prof}</Text>
-                  <View style={{ height: 1, flex: 1, backgroundColor: colors.glassBorder, opacity: 0.4 }} />
-                </View>
-
-                {/* Profile Overview Badges */}
-                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-                  <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '500' }}>Total: </Text>
-                    <Text style={{ color: colors.foreground, fontSize: 10, fontWeight: '600' }}>{profTotal}</Text>
-                  </View>
-                  <View style={{ backgroundColor: 'rgba(34,197,94,0.06)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '500' }}>Unused: </Text>
-                    <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '600' }}>{profUnused}</Text>
-                  </View>
-                  <View style={{ backgroundColor: 'rgba(245,158,11,0.06)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '500' }}>Active: </Text>
-                    <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '600' }}>{profActive}</Text>
-                  </View>
-                </View>
-
-              {Object.entries(batches).sort((a, b) => b[0].localeCompare(a[0])).map(([comment, users]) => {
-                const groupKey = `${prof}-${comment}`;
-                const isUnknown = comment === 'Old / Unknown';
-                
-                const originalCountMatch = comment.match(/\|\s*(\d{4})$/);
-                const originalCount = originalCountMatch ? parseInt(originalCountMatch[1]) : users.length;
-                
-                const availableVouchers = users.filter((u: any) => {
-                  const hasKillSched = schedulers.some((s: any) => s.name === `kill_${u.name}`);
-                  return !hasKillSched;
-                });
-                
-                const remainingCount = availableVouchers.length;
-                const displayTime = comment.split(' | ')[0];
-                const activeCount = users.filter((u: any) => 
-                  schedulers.some((s: any) => s.name === `kill_${u.name}`)
-                ).length;
-                
-                const formattedTime = formatBatchTime(comment);
-                const firstUser = users[0];
-                const limitBytes = firstUser?.['limit-bytes-total'] ? parseInt(firstUser['limit-bytes-total']) : 0;
-                
-                return (
-                  <View key={comment} style={{ 
-                    backgroundColor: colors.cardBg, 
-                    padding: 14, 
-                    borderRadius: 16, 
-                    marginBottom: 12,
-                    borderWidth: 1.5,
-                    borderColor: colors.glassBorder,
-                  }}>
-                    {/* Header Row */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="calendar-outline" size={13} color={colors.primary} />
-                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>
+                  return (
+                    <TouchableOpacity
+                      key={groupKey}
+                      onPress={() => setSelectedBatch({ profile: prof, comment, users })}
+                      activeOpacity={0.7}
+                      style={{
+                        flexDirection: 'column',
+                        backgroundColor: colors.cardBg,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: colors.glassBorder,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {/* Top row: profile name (left) + date (right) */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {prof}{limitBytes > 0 ? `  ·  ${getGBString(limitBytes)}` : ''}
+                        </Text>
+                        <Text style={{ fontSize: 9, color: colors.textMuted }}>
                           {formattedTime}
                         </Text>
                       </View>
-                      {limitBytes > 0 && (
-                        <View style={{ backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.glassBorder }}>
-                          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '600' }}>
-                            {getGBString(limitBytes)}
+
+                      {/* Main content row */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        {/* Left: voucher count */}
+                        <View style={{ width: 64, alignItems: 'center', flexShrink: 0 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground, lineHeight: 17 }}>
+                            {originalCount}
+                          </Text>
+                          <Text style={{ fontSize: 9, color: colors.textMuted, marginTop: 2, lineHeight: 10 }}>vouchers</Text>
+                        </View>
+
+                        {/* Center: stats */}
+                        <View style={{
+                          flex: 1,
+                          borderLeftWidth: 1,
+                          borderLeftColor: colors.glassBorder,
+                          paddingLeft: 12,
+                          minWidth: 0,
+                        }}>
+                          <Text style={{ fontSize: 10 }}>
+                            <Text style={{ color: '#22c55e', fontWeight: '600' }}>{unusedCount}</Text>
+                            <Text style={{ color: colors.textMuted }}> unused  </Text>
+                            <Text style={{ color: '#f59e0b', fontWeight: '600' }}>{activeCount}</Text>
+                            <Text style={{ color: colors.textMuted }}> active</Text>
                           </Text>
                         </View>
-                      )}
-                    </View>
 
-                    {/* Progress Ratio Section */}
-                    {(() => {
-                      const ratio = originalCount > 0 ? (remainingCount / originalCount) : 0;
-                      const percent = Math.round(ratio * 100);
-                      return (
-                        <View style={{ marginBottom: 14 }}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>
-                              {remainingCount} <Text style={{ color: colors.textMuted, fontWeight: '500' }}>of {originalCount} vouchers unused</Text>
-                            </Text>
-                            {activeCount > 0 && (
-                              <Text style={{ fontSize: 11, color: '#f59e0b', fontWeight: '600' }}>
-                                {activeCount} Active
-                              </Text>
+                        {/* Right: actions */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <TouchableOpacity
+                            onPress={() => handlePrintGroup(prof, comment, users)}
+                            disabled={printingGroup === groupKey}
+                            activeOpacity={0.75}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              backgroundColor: colors.primary,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                            }}
+                          >
+                            {printingGroup === groupKey ? (
+                              <ActivityIndicator size="small" color="#fff" style={{ transform: [{ scale: 0.75 }] }} />
+                            ) : (
+                              <>
+                                <Ionicons name="print-outline" size={12} color="#fff" />
+                                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Print</Text>
+                              </>
                             )}
-                          </View>
-                          <View style={{ height: 6, width: '100%', backgroundColor: colors.secondary, borderRadius: 3, overflow: 'hidden' }}>
-                            <View style={{ height: '100%', width: `${percent}%`, backgroundColor: colors.primary, borderRadius: 3 }} />
-                          </View>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteGroup(`${prof} (${formattedTime})`, users)}
+                            disabled={isDeleting || printingGroup === groupKey}
+                            activeOpacity={0.7}
+                            style={{
+                              width: 28,
+                              height: 28,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Ionicons name="trash-outline" size={14} color={colors.textMuted} />
+                          </TouchableOpacity>
                         </View>
-                      );
-                    })()}
-
-                    {/* Footer Actions */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <TouchableOpacity
-                        onPress={() => setSelectedBatch({ profile: prof, comment, users })}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                      >
-                        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>View Details</Text>
-                        <Ionicons name="arrow-forward" size={12} color={colors.primary} />
-                      </TouchableOpacity>
-
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity
-                          onPress={() => handlePrintGroup(prof, comment, users)}
-                          disabled={printingGroup === groupKey}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 4,
-                            backgroundColor: colors.primary + '14',
-                            borderColor: colors.primary + '28',
-                            borderWidth: 1,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
-                            borderRadius: 8,
-                          }}
-                        >
-                          {printingGroup === groupKey ? (
-                            <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
-                          ) : (
-                            <>
-                              <Ionicons name="print-outline" size={12} color={colors.primary} />
-                              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>Print</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleDeleteGroup(`${prof} (${formattedTime})`, users)}
-                          disabled={isDeleting || printingGroup === groupKey}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 4,
-                            backgroundColor: 'rgba(239,68,68,0.06)',
-                            borderColor: 'rgba(239,68,68,0.12)',
-                            borderWidth: 1,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
-                            borderRadius: 8,
-                          }}
-                        >
-                          <Ionicons name="trash-outline" size={12} color="#ef4444" />
-                          <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '600' }}>Delete</Text>
-                        </TouchableOpacity>
                       </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          );
-        })}
+                    </TouchableOpacity>
+                  );
+                })
+            )}
           <View style={{ height: 50 }} />
         </ScrollView>
       )}
