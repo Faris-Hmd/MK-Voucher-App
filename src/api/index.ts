@@ -32,18 +32,17 @@ const getAuthHeaders = async () => {
   };
 };
 
+export let SERVER_URL = 'http://187.127.234.201:3000';
+export const setServerUrl = (url: string) => {
+  SERVER_URL = url;
+};
+
 const getBaseUrl = async () => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured.");
 
-  let ip = (config.useVpn && config.vpnIp) ? config.vpnIp.trim() : config.ip.trim();
-  if (!ip.startsWith('http://') && !ip.startsWith('https://')) {
-    ip = `http://${ip}`;
-  }
-  if (ip.endsWith('/')) {
-    ip = ip.slice(0, -1);
-  }
-  return ip;
+  const routerId = config.id || 'ROUTER_01';
+  return `${SERVER_URL}/api/routers/${routerId}`;
 };
 
 export const generateRandomString = (length: number): string => {
@@ -61,6 +60,16 @@ const chunkArray = <T>(array: T[], size: number): T[][] => {
     chunked.push(array.slice(i, i + size));
   }
   return chunked;
+};
+
+export const fetchRouterProfilesAPI = async (): Promise<Array<{ id: string; name: string; user: string; pass: string; isCloudManaged: boolean }>> => {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/routers/profiles`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (e) {
+    return [];
+  }
 };
 
 export const fetchProfilesAPI = async () => {

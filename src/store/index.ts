@@ -10,6 +10,7 @@ export interface RouterConfig {
   wifiName?: string;
   vpnIp?: string;
   useVpn?: boolean;
+  isCloudManaged?: boolean;
   wgClientPrivateKey?: string;
   wgClientIp?: string;
   wgServerPublicKey?: string;
@@ -83,6 +84,25 @@ export const loadSavedRoutersFromFirestore = async (userEmail: string): Promise<
     return null;
   } catch (e) {
     console.error('Failed to load saved routers from Firestore:', e);
+    return null;
+  }
+};
+
+const SERVER_URL_KEY = '@server_url';
+
+export const saveServerUrl = async (url: string) => {
+  try {
+    await AsyncStorage.setItem(SERVER_URL_KEY, url);
+  } catch (e) {
+    console.error('Failed to save server URL', e);
+  }
+};
+
+export const loadServerUrl = async (): Promise<string | null> => {
+  try {
+    return await AsyncStorage.getItem(SERVER_URL_KEY);
+  } catch (e) {
+    console.error('Failed to load server URL', e);
     return null;
   }
 };

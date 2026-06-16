@@ -16,7 +16,7 @@ try {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
-import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI } from './src/api';
+import { checkConnectionAPI, fetchSystemResourcesAPI, fetchSystemHealthAPI, fetchActiveSessionsAPI, formatUptimeAPI, setServerUrl } from './src/api';
 import { 
   loadConfig, 
   saveConfig, 
@@ -24,6 +24,7 @@ import {
   loadSavedRouters, 
   syncSavedRoutersToFirestore, 
   loadSavedRoutersFromFirestore, 
+  loadServerUrl,
   RouterConfig 
 } from './src/store';
 
@@ -88,6 +89,12 @@ function AppInner() {
       // 1. Load local saved routers
       const localRouters = await loadSavedRouters();
       setSavedRouters(localRouters);
+
+      // Load saved server URL
+      const savedServerUrl = await loadServerUrl();
+      if (savedServerUrl) {
+        setServerUrl(savedServerUrl);
+      }
 
       // 2. Load Firestore saved routers
       const email = getAuth().currentUser?.email;
@@ -165,72 +172,16 @@ function AppInner() {
   const connectRouter = async (router: RouterConfig, useVpn: boolean, checkAborted?: () => boolean): Promise<boolean> => {
     if (checkAborted && checkAborted()) return false;
 
-    if (useVpn) {
-      if (!router.wgClientPrivateKey || !router.wgServerPublicKey || !router.wgEndpointHost) {
-        Alert.alert('VPN Configuration Missing', 'Please configure the WireGuard VPN settings for this router first.');
-        return false;
-      }
-      
-      const cleanPriv = router.wgClientPrivateKey.replace(/[^A-Za-z0-9+/=]/g, '').trim();
-      const cleanPub = router.wgServerPublicKey.replace(/[^A-Za-z0-9+/=]/g, '').trim();
-      const base64KeyRegex = /^[A-Za-z0-9+/]{43}=$/;
-
-      if (!base64KeyRegex.test(cleanPriv)) {
-        Alert.alert('Invalid Private Key', 'The Client Private Key is not a valid 44-character Base64 key.');
-        return false;
-      }
-      if (!base64KeyRegex.test(cleanPub)) {
-        Alert.alert('Invalid Public Key', 'The Server Public Key is not a valid 44-character Base64 key.');
-        return false;
-      }
-
-      if (checkAborted && checkAborted()) return false;
-
-      try {
-        const confText = compileWgConfig({
-          privateKey: cleanPriv,
-          address: router.wgClientIp || '10.88.0.2/24',
-          dns: router.vpnIp || '10.88.0.1',
-          publicKey: cleanPub,
-          allowedIps: router.wgAllowedIps || '0.0.0.0/0',
-          endpoint: `${router.wgEndpointHost}:${router.wgEndpointPort || '13231'}`
-        });
-        await WireGuard.connect(confText);
-      } catch (err: any) {
-        if (checkAborted && checkAborted()) return false;
-        Alert.alert('VPN Connection Failed', err.message || 'Could not establish connection to the WireGuard tunnel.');
-        return false;
-      }
-    } else {
-      try {
-        await WireGuard.disconnect();
-      } catch (err) {
-        console.warn('Failed to disconnect VPN:', err);
-      }
-    }
-
-    if (checkAborted && checkAborted()) {
-      if (useVpn) {
-        try { await WireGuard.disconnect(); } catch (e) {}
-      }
-      return false;
-    }
-
     // Write to current config storage
     const targetConfig = { ...router, useVpn };
     await saveConfig(targetConfig);
     setActiveRouter(targetConfig);
 
-    // Verify router connectivity (try up to 3 times on VPN to account for handshake lag)
+    // Verify router connectivity (try up to 3 times to account for remote connection establishment)
     let verifySuccess = false;
     const maxRetries = useVpn ? 3 : 1;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (checkAborted && checkAborted()) {
-        if (useVpn) {
-          try { await WireGuard.disconnect(); } catch (e) {}
-        }
-        return false;
-      }
+      if (checkAborted && checkAborted()) return false;
       const status = await checkConnectionAPI();
       if (status) {
         verifySuccess = true;
@@ -238,23 +189,13 @@ function AppInner() {
       }
       if (attempt < maxRetries) {
         for (let delay = 0; delay < 2000; delay += 200) {
-          if (checkAborted && checkAborted()) {
-            if (useVpn) {
-              try { await WireGuard.disconnect(); } catch (e) {}
-            }
-            return false;
-          }
+          if (checkAborted && checkAborted()) return false;
           await new Promise(r => setTimeout(r, 200));
         }
       }
     }
 
-    if (checkAborted && checkAborted()) {
-      if (useVpn) {
-        try { await WireGuard.disconnect(); } catch (e) {}
-      }
-      return false;
-    }
+    if (checkAborted && checkAborted()) return false;
 
     if (verifySuccess) {
       setIsConnected(true);
@@ -287,12 +228,6 @@ function AppInner() {
       });
       return true;
     } else {
-      // Clean up VPN on failure
-      if (useVpn) {
-        try {
-          await WireGuard.disconnect();
-        } catch (e) {}
-      }
       setIsConnected(false);
       setIsRouterConnected(false);
       return false;

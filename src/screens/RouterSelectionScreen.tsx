@@ -3,7 +3,9 @@ import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityInd
 import { useTheme } from '../ThemeContext';
 import { 
   saveConfig, 
-  RouterConfig 
+  RouterConfig,
+  saveServerUrl,
+  loadServerUrl
 } from '../store';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth, signOut } from '@react-native-firebase/auth';
@@ -15,10 +17,15 @@ import {
   addWireguardPeerAPI, 
   deleteWireguardInterfaceAPI,
   fetchSystemCloudAPI,
-  enableSystemCloudAPI
+  enableSystemCloudAPI,
+  fetchRouterProfilesAPI,
+  SERVER_URL,
+  setServerUrl,
+  formatUptimeAPI
 } from '../api';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Network from 'expo-network';
 
 export default function RouterSelectionScreen({
   userEmail,
@@ -34,8 +41,122 @@ export default function RouterSelectionScreen({
   const { colors, styles, mode, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const abortConnectionRef = useRef(false);
-  
-  // Navigation View State ('list' or 'form')
+
+  interface RouterTelemetry {
+    id: string;
+    name: string;
+    ip: string;
+    status: 'online' | 'offline';
+    identity: string;
+    uptime: string;
+    cpuLoad: number | null;
+    totalMemory: number | null;
+    freeMemory: number | null;
+    activeUsers: number;
+  }
+
+  const [activeServerUrl, setActiveServerUrl] = useState(SERVER_URL);
+  const [routerStatuses, setRouterStatuses] = useState<Record<string, RouterTelemetry>>({});
+
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let reconnectTimer: any = null;
+    let active = true;
+
+    const connectWS = () => {
+      if (!active) return;
+      const wsUrl = activeServerUrl.replace(/^http/, 'ws');
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if ((message.type === 'initial_state' || message.type === 'status_update') && Array.isArray(message.data)) {
+            const newStatuses: Record<string, RouterTelemetry> = {};
+            message.data.forEach((item: RouterTelemetry) => {
+              newStatuses[item.id] = item;
+            });
+            setRouterStatuses(prev => ({ ...prev, ...newStatuses }));
+          }
+        } catch (err) {
+          console.warn('WebSocket message error:', err);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.warn('WebSocket connection error:', err);
+      };
+
+      ws.onclose = () => {
+        if (active) {
+          reconnectTimer = setTimeout(connectWS, 5000);
+        }
+      };
+    };
+
+    const fetchInitial = async () => {
+      try {
+        const res = await fetch(`${activeServerUrl}/api/routers`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const newStatuses: Record<string, RouterTelemetry> = {};
+            data.forEach((item: RouterTelemetry) => {
+              newStatuses[item.id] = item;
+            });
+            setRouterStatuses(prev => ({ ...prev, ...newStatuses }));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch initial router statuses:', err);
+      }
+    };
+
+    fetchInitial();
+    connectWS();
+
+    return () => {
+      active = false;
+      if (ws) ws.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [activeServerUrl]);
+
+  // Auto-sync cloud-managed routers from server on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const profiles = await fetchRouterProfilesAPI();
+        if (!profiles || profiles.length === 0) return;
+
+        const cloudConfigs: RouterConfig[] = profiles.map(p => ({
+          id: p.id,
+          name: p.name,
+          ip: '127.0.0.1', // Not used directly — server proxies to router
+          user: p.user,
+          pass: p.pass,
+          isCloudManaged: true,
+        }));
+
+        // Merge: add cloud routers not already in savedRouters
+        const existingIds = new Set(savedRouters.map(r => r.id));
+        const newCloudRouters = cloudConfigs.filter(r => !existingIds.has(r.id));
+        if (newCloudRouters.length > 0) {
+          await onUpdateSavedRouters([...newCloudRouters, ...savedRouters]);
+        } else {
+          // Update credentials for existing cloud routers in case they changed
+          const updated = savedRouters.map(r => {
+            const cloudMatch = cloudConfigs.find(c => c.id === r.id);
+            return cloudMatch ? { ...r, ...cloudMatch } : r;
+          });
+          const hasChanges = JSON.stringify(updated) !== JSON.stringify(savedRouters);
+          if (hasChanges) await onUpdateSavedRouters(updated);
+        }
+      } catch (e) {
+        // Server unreachable — use existing saved routers
+      }
+    })();
+  }, [activeServerUrl]);
   const [currentView, setCurrentView] = useState<'list' | 'form'>('list');
 
   // Local Form State
@@ -63,8 +184,41 @@ export default function RouterSelectionScreen({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
 
+  // MNDP Auto-Discovery State
+  interface DiscoveredRouter {
+    mac: string;
+    ip: string;
+    name: string;
+    platform?: string;
+    version?: string;
+  }
+  const [discoveredRouters, setDiscoveredRouters] = useState<DiscoveredRouter[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isDiscoveredListVisible, setIsDiscoveredListVisible] = useState(false);
+
   const [formVisible, setFormVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [tempServerUrl, setTempServerUrl] = useState(SERVER_URL);
+
+  const handleSaveServerUrl = async () => {
+    if (!tempServerUrl.trim()) {
+      Alert.alert('Invalid URL', 'Backend server URL cannot be empty.');
+      return;
+    }
+    let formattedUrl = tempServerUrl.trim();
+    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+      formattedUrl = 'http://' + formattedUrl;
+    }
+    try {
+      await saveServerUrl(formattedUrl);
+      setServerUrl(formattedUrl);
+      setTempServerUrl(formattedUrl);
+      setActiveServerUrl(formattedUrl);
+      Alert.alert('Success', 'Backend server URL updated successfully.');
+    } catch (err: any) {
+      Alert.alert('Save Failed', err.message || 'An error occurred.');
+    }
+  };
   const [drawerRendered, setDrawerRendered] = useState(false);
 
   const formAnim = useRef(new Animated.Value(0)).current;
@@ -91,6 +245,7 @@ export default function RouterSelectionScreen({
 
   useEffect(() => {
     if (isSettingsOpen) {
+      setTempServerUrl(SERVER_URL);
       setSettingsVisible(true);
       Animated.spring(settingsAnim, {
         toValue: 1,
@@ -299,6 +454,116 @@ export default function RouterSelectionScreen({
       setIsZeroTouchLoading(false);
       setZeroTouchStatus('');
     }
+  };
+
+  const handleAutoScan = async () => {
+    setIsScanning(true);
+    setIsAddDrawerOpen(false);
+
+    try {
+      const ipAddress = await Network.getIpAddressAsync();
+      console.log('📱 Phone local IP:', ipAddress);
+
+      if (!ipAddress || ipAddress === '127.0.0.1' || ipAddress === '0.0.0.0' || !ipAddress.includes('.')) {
+        setIsScanning(false);
+        Alert.alert(
+          'Wi-Fi Connection Required',
+          'Please ensure your phone is connected to a local Wi-Fi network before scanning.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      const parts = ipAddress.split('.');
+      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`;
+      const found: DiscoveredRouter[] = [];
+
+      const scanIp = async (targetIp: string): Promise<DiscoveredRouter | null> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 700);
+        try {
+          const res = await fetch(`http://${targetIp}/`, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          clearTimeout(timeoutId);
+          const body = await res.text();
+          const bodyLower = body.toLowerCase();
+          if (bodyLower.includes('mikrotik') || bodyLower.includes('routeros') || bodyLower.includes('webfig')) {
+            return {
+              mac: 'Local LAN',
+              ip: targetIp,
+              name: targetIp === `${prefix}.1` ? 'Default Gateway Router' : `MikroTik (${targetIp})`,
+              platform: 'RouterOS',
+              version: 'Detected on LAN'
+            };
+          }
+        } catch (err) {
+          clearTimeout(timeoutId);
+        }
+        return null;
+      };
+
+      const ipsToScan: string[] = [];
+      ipsToScan.push(`${prefix}.1`);
+      ipsToScan.push(`${prefix}.254`);
+      for (let i = 2; i < 254; i++) {
+        ipsToScan.push(`${prefix}.${i}`);
+      }
+
+      const batchSize = 35;
+      for (let i = 0; i < ipsToScan.length; i += batchSize) {
+        const currentBatch = ipsToScan.slice(i, i + batchSize);
+        const results = await Promise.all(currentBatch.map(targetIp => scanIp(targetIp)));
+        for (const r of results) {
+          if (r) {
+            found.push(r);
+          }
+        }
+      }
+
+      setIsScanning(false);
+      if (found.length > 0) {
+        setDiscoveredRouters(found);
+        if (found.length === 1) {
+          selectDiscoveredRouter(found[0]);
+        } else {
+          setIsDiscoveredListVisible(true);
+        }
+      } else {
+        Alert.alert(
+          'No Routers Found',
+          `No MikroTik routers were detected on subnet ${prefix}.0/24. Please ensure the router is powered on, connected to the same Wi-Fi, and HTTP Webfig service is enabled on port 80.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err: any) {
+      setIsScanning(false);
+      Alert.alert('Scan Error', err.message || 'An error occurred while scanning the local network.');
+    }
+  };
+
+  const selectDiscoveredRouter = (dev: DiscoveredRouter) => {
+    setIsDiscoveredListVisible(false);
+    
+    setEditingRouterId(null);
+    setDeviceName(dev.name);
+    setIp(dev.ip);
+    setUser('admin');
+    setPass('');
+    setWifiName('WI-FI ACCESS');
+    
+    setVpnIp('10.88.0.1');
+    setWgClientPrivateKey('');
+    setWgClientIp('10.88.0.2/24');
+    setWgServerPublicKey('');
+    setWgEndpointHost('');
+    setWgEndpointPort('13231');
+    setWgAllowedIps('0.0.0.0/0');
+    setIsWgSectionExpanded(false);
+    setShowAdvancedWg(false);
+
+    setCurrentView('form');
   };
 
   const handleAddNewClick = () => {
@@ -956,6 +1221,50 @@ export default function RouterSelectionScreen({
             </View>
           </View>
 
+          {/* Backend Server URL Card */}
+          <View style={[styles.card, { padding: 16, borderWidth: 1.5, borderColor: colors.glassBorder, marginBottom: 16, borderRadius: 16 }]}>
+            <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12, color: colors.textMuted }]}>Backend Server</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted, marginBottom: 10 }}>Configure the URL of the backend server that manages your routers:</Text>
+            
+            <TextInput
+              value={tempServerUrl}
+              onChangeText={setTempServerUrl}
+              placeholder="http://192.168.1.100:3000"
+              placeholderTextColor={colors.textMuted}
+              style={{
+                backgroundColor: colors.inputBg,
+                color: colors.foreground,
+                borderWidth: 1,
+                borderColor: colors.glassBorder,
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 13,
+                marginBottom: 12
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            
+            <TouchableOpacity
+              onPress={handleSaveServerUrl}
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+                shadowColor: colors.primary,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 4,
+                elevation: 2
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Save Server URL</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Info Card */}
           <View style={[styles.card, { padding: 16, borderWidth: 1.5, borderColor: colors.glassBorder, marginBottom: 16, borderRadius: 16 }]}>
             <Text style={[styles.label, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12, color: colors.textMuted }]}>Application</Text>
@@ -1064,79 +1373,250 @@ export default function RouterSelectionScreen({
         ) : (
           savedRouters.map((router, index) => {
             const isConnectingThis = connectingRouterId === router.id;
+            const status = routerStatuses[router.id || ''];
+
             return (
               <View 
                 key={router.id || index} 
                 style={{
                   backgroundColor: colors.cardBg,
-                  borderRadius: 16,
-                  borderWidth: 1.5,
+                  borderRadius: 12,
+                  borderWidth: 1.2,
                   borderColor: colors.glassBorder,
-                  padding: 16,
-                  marginBottom: 12,
-                  gap: 12
+                  padding: 12,
+                  marginBottom: 10,
+                  gap: 10
                 }}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flex: 1, justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>{router.name || 'MikroTik Router'}</Text>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: colors.foreground, letterSpacing: -0.3 }}>
+                      {router.name || 'MikroTik Router'}
+                    </Text>
+                    
+                    {/* Compact Status Badge */}
+                    {status ? (
+                      <View style={{ 
+                        paddingHorizontal: 6, 
+                        paddingVertical: 1.5, 
+                        borderRadius: 6, 
+                        backgroundColor: status.status === 'online' ? '#22c55e12' : '#ef444412',
+                        borderWidth: 1,
+                        borderColor: status.status === 'online' ? '#22c55e25' : '#ef444425',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4
+                      }}>
+                        <View style={{ 
+                          width: 5, 
+                          height: 5, 
+                          borderRadius: 2.5, 
+                          backgroundColor: status.status === 'online' ? '#22c55e' : '#ef4444' 
+                        }} />
+                        <Text style={{ 
+                          fontSize: 9, 
+                          fontWeight: '700', 
+                          color: status.status === 'online' ? '#22c55e' : '#ef4444',
+                          textTransform: 'uppercase'
+                        }}>
+                          {status.status}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <ActivityIndicator size="small" color={colors.textMuted} style={{ transform: [{ scale: 0.5 }] }} />
+                        <Text style={{ fontSize: 9, color: colors.textMuted, fontWeight: '500' }}>Checking...</Text>
+                      </View>
+                    )}
                   </View>
+                  
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <TouchableOpacity 
-                      disabled={isConnectingThis}
-                      onPress={() => handleEditRouter(router)} 
-                      style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.glassBorder }}
-                    >
-                      <Ionicons name="pencil-outline" size={16} color={colors.foreground} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      disabled={isConnectingThis}
-                      onPress={() => handleDeleteRouter(router)} 
-                      style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#ef444415', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444425' }}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                    </TouchableOpacity>
+                    {!router.isCloudManaged && (
+                      <>
+                        <TouchableOpacity 
+                          disabled={isConnectingThis}
+                          onPress={() => handleEditRouter(router)} 
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.glassBorder }}
+                        >
+                          <Ionicons name="pencil-outline" size={14} color={colors.foreground} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          disabled={isConnectingThis}
+                          onPress={() => handleDeleteRouter(router)} 
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: '#ef444410', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444420' }}
+                        >
+                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                    {router.isCloudManaged && (
+                      <View style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 3,
+                        borderRadius: 6,
+                        backgroundColor: '#3b82f615',
+                        borderWidth: 1,
+                        borderColor: '#3b82f630',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4
+                      }}>
+                        <Ionicons name="cloud-outline" size={10} color="#3b82f6" />
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#3b82f6' }}>CLOUD</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 10, borderTopWidth: 1, borderTopColor: colors.glassBorder, paddingTop: 10 }}>
-                  <TouchableOpacity 
-                    disabled={isConnectingThis}
-                    onPress={() => handleConnect(router, false)}
-                    style={{
-                      flex: 1,
+                {/* Telemetry Stats Grid (only when online) - Extremely Compact Row */}
+                {status && status.status === 'online' && (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingTop: 6,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.glassBorder
+                  }}>
+                    {/* Active Users */}
+                    <View style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.secondary,
-                      paddingVertical: 10,
-                      borderRadius: 10,
-                      gap: 6,
-                      borderWidth: 1.5,
-                      borderColor: colors.glassBorder
-                    }}
-                  >
-                    <Ionicons name="wifi" size={13} color={colors.foreground} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.foreground }}>Local Access</Text>
-                  </TouchableOpacity>
+                      gap: 3,
+                      backgroundColor: colors.inputBg,
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 5,
+                      borderWidth: 1,
+                      borderColor: colors.glassBorder,
+                    }}>
+                      <Ionicons name="people-outline" size={10} color={colors.textMuted} />
+                      <Text style={{ fontSize: 9, color: colors.foreground, fontWeight: '700' }}>
+                        {status.activeUsers} <Text style={{ color: colors.textMuted, fontWeight: '400', fontSize: 8 }}>online</Text>
+                      </Text>
+                    </View>
 
-                  <TouchableOpacity 
-                    disabled={isConnectingThis}
-                    onPress={() => handleConnect(router, true)}
-                    style={{
-                      flex: 1,
+                    {/* CPU Load */}
+                    <View style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.primary,
-                      paddingVertical: 10,
-                      borderRadius: 10,
-                      gap: 6
-                    }}
-                  >
-                    <Ionicons name="shield-checkmark" size={13} color="#fff" />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#fff' }}>VPN Access</Text>
-                  </TouchableOpacity>
+                      gap: 3,
+                      backgroundColor: colors.inputBg,
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 5,
+                      borderWidth: 1,
+                      borderColor: colors.glassBorder,
+                    }}>
+                      <Ionicons name="pulse-outline" size={10} color={colors.textMuted} />
+                      <Text style={{ fontSize: 9, color: colors.foreground, fontWeight: '700' }}>
+                        {status.cpuLoad !== null ? `${status.cpuLoad}%` : 'N/A'} <Text style={{ color: colors.textMuted, fontWeight: '400', fontSize: 8 }}>CPU</Text>
+                      </Text>
+                    </View>
+
+                    {/* RAM Usage */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 3,
+                      backgroundColor: colors.inputBg,
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 5,
+                      borderWidth: 1,
+                      borderColor: colors.glassBorder,
+                    }}>
+                      <Ionicons name="hardware-chip-outline" size={10} color={colors.textMuted} />
+                      <Text style={{ fontSize: 9, color: colors.foreground, fontWeight: '700' }}>
+                        {status.totalMemory && status.freeMemory ? (
+                          `${Math.round((status.totalMemory - status.freeMemory) / (1024 * 1024))}/${Math.round(status.totalMemory / (1024 * 1024))}MB`
+                        ) : (
+                          'N/A'
+                        )}
+                      </Text>
+                    </View>
+
+                    {/* Uptime */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 3,
+                      backgroundColor: colors.inputBg,
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 5,
+                      borderWidth: 1,
+                      borderColor: colors.glassBorder,
+                    }}>
+                      <Ionicons name="time-outline" size={10} color={colors.textMuted} />
+                      <Text style={{ fontSize: 9, color: colors.foreground, fontWeight: '700' }} numberOfLines={1} ellipsizeMode="tail">
+                        {formatUptimeAPI(status.uptime)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', gap: 8, borderTopWidth: 1, borderTopColor: colors.glassBorder, paddingTop: 8 }}>
+                  {router.isCloudManaged ? (
+                    <TouchableOpacity 
+                      disabled={isConnectingThis}
+                      onPress={() => handleConnect(router, false)}
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: colors.primary,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        gap: 6,
+                        opacity: isConnectingThis ? 0.6 : 1,
+                      }}
+                    >
+                      <Ionicons name="cloud" size={13} color="#fff" />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Connect via Server</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <TouchableOpacity 
+                        disabled={isConnectingThis}
+                        onPress={() => handleConnect(router, false)}
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: colors.secondary,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6,
+                          borderWidth: 1,
+                          borderColor: colors.glassBorder
+                        }}
+                      >
+                        <Ionicons name="wifi" size={12} color={colors.foreground} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.foreground }}>Local Access</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        disabled={isConnectingThis}
+                        onPress={() => handleConnect(router, true)}
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: colors.primary,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                      >
+                        <Ionicons name="shield-checkmark" size={12} color="#fff" />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>VPN Access</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
               </View>
             );
@@ -1316,17 +1796,16 @@ export default function RouterSelectionScreen({
       )}
 
       {/* Bottom Sheet Drawer for adding router */}
-      {drawerRendered && (
-        <Animated.View style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+      <Modal
+        visible={isAddDrawerOpen}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsAddDrawerOpen(false)}
+      >
+        <View style={{
+          flex: 1,
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
           justifyContent: 'flex-end',
-          zIndex: 999,
-          opacity: drawerAnim
         }}>
           {/* Backdrop Touch to Close */}
           <TouchableOpacity 
@@ -1335,7 +1814,7 @@ export default function RouterSelectionScreen({
             onPress={() => setIsAddDrawerOpen(false)}
           />
           
-          <Animated.View style={{
+          <View style={{
             backgroundColor: colors.cardBg,
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
@@ -1344,18 +1823,12 @@ export default function RouterSelectionScreen({
             borderBottomWidth: 0,
             paddingHorizontal: 20,
             paddingTop: 10,
-            paddingBottom: 34,
+            paddingBottom: Math.max(insets.bottom, 20) + 10,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -10 },
             shadowOpacity: 0.1,
             shadowRadius: 10,
             elevation: 20,
-            transform: [{
-              translateY: drawerAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [500, 0]
-              })
-            }]
           }}>
             {/* Drag Handle */}
             <View style={{
@@ -1381,9 +1854,7 @@ export default function RouterSelectionScreen({
             <View style={{ gap: 12 }}>
               {/* Auto Scan Option */}
               <TouchableOpacity
-                onPress={() => {
-                  // Auto scan does nothing for now
-                }}
+                onPress={handleAutoScan}
                 activeOpacity={0.7}
                 style={{
                   flexDirection: 'row',
@@ -1416,7 +1887,6 @@ export default function RouterSelectionScreen({
               <TouchableOpacity
                 onPress={() => {
                   setIsAddDrawerOpen(false);
-                  // Trigger manual add form
                   setEditingRouterId(null);
                   setDeviceName('');
                   setIp('192.168.1.56');
@@ -1473,8 +1943,113 @@ export default function RouterSelectionScreen({
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>Cancel</Text>
             </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Scanning Overlay */}
+      {isScanning && (
+        <View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000
+        }}>
+          <View style={{
+            backgroundColor: colors.cardBg,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: colors.glassBorder,
+            padding: 24,
+            alignItems: 'center',
+            gap: 16,
+            width: '80%'
+          }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>Scanning local network...</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: 'center' }}>Searching for MikroTik routers via MNDP</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Discovered Routers List Modal */}
+      {isDiscoveredListVisible && (
+        <View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000,
+          padding: 20
+        }}>
+          <View style={{
+            backgroundColor: colors.cardBg,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: colors.glassBorder,
+            padding: 20,
+            width: '100%',
+            maxHeight: '80%',
+            gap: 16
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.foreground }}>Discovered Routers</Text>
+              <TouchableOpacity onPress={() => setIsDiscoveredListVisible(false)}>
+                <Ionicons name="close" size={20} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              {discoveredRouters.map((dev, idx) => (
+                <TouchableOpacity
+                  key={dev.mac || idx}
+                  onPress={() => selectDiscoveredRouter(dev)}
+                  style={{
+                    backgroundColor: colors.inputBg,
+                    borderWidth: 1,
+                    borderColor: colors.glassBorder,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground }}>{dev.name}</Text>
+                    <Text style={{ fontSize: 10, color: colors.textMuted }}>IP: {dev.ip}  |  MAC: {dev.mac}</Text>
+                    {dev.version && <Text style={{ fontSize: 9, color: colors.textMuted }}>Version: {dev.version} ({dev.platform})</Text>}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setIsDiscoveredListVisible(false)}
+              style={{
+                backgroundColor: colors.secondary,
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+                borderWidth: 1.5,
+                borderColor: colors.glassBorder
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.foreground }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
     </View>
   );
