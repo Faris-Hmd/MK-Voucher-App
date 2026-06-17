@@ -1359,28 +1359,10 @@ export default function RouterSelectionScreen({
                     )}
                   </View>
                   
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {!router.isCloudManaged && (
-                      <>
-                        <TouchableOpacity 
-                          disabled={isConnectingThis}
-                          onPress={() => handleEditRouter(router)} 
-                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.glassBorder }}
-                        >
-                          <Ionicons name="pencil-outline" size={14} color={colors.foreground} />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          disabled={isConnectingThis}
-                          onPress={() => handleDeleteRouter(router)} 
-                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: '#ef444410', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444420' }}
-                        >
-                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                        </TouchableOpacity>
-                      </>
-                    )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     {router.isCloudManaged && (
                       <View style={{
-                        paddingHorizontal: 7,
+                        paddingHorizontal: 6,
                         paddingVertical: 3,
                         borderRadius: 6,
                         backgroundColor: '#3b82f615',
@@ -1388,12 +1370,26 @@ export default function RouterSelectionScreen({
                         borderColor: '#3b82f630',
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 4
+                        gap: 3
                       }}>
-                        <Ionicons name="cloud-outline" size={10} color="#3b82f6" />
-                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#3b82f6' }}>CLOUD</Text>
+                        <Ionicons name="cloud-outline" size={9} color="#3b82f6" />
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: '#3b82f6' }}>CLOUD</Text>
                       </View>
                     )}
+                    <TouchableOpacity 
+                      disabled={isConnectingThis}
+                      onPress={() => handleEditRouter(router)} 
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.glassBorder }}
+                    >
+                      <Ionicons name="pencil-outline" size={14} color={colors.foreground} />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      disabled={isConnectingThis}
+                      onPress={() => handleDeleteRouter(router)} 
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: '#ef444410', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444420' }}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
