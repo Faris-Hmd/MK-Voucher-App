@@ -58,13 +58,29 @@ export const loadSavedRouters = async (): Promise<RouterConfig[]> => {
   }
 };
 
+const sanitizeForFirestore = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore);
+  } else if (obj !== null && typeof obj === 'object') {
+    const clean: any = {};
+    for (const key of Object.keys(obj)) {
+      if (obj[key] !== undefined) {
+        clean[key] = sanitizeForFirestore(obj[key]);
+      }
+    }
+    return clean;
+  }
+  return obj;
+};
+
 export const syncSavedRoutersToFirestore = async (userEmail: string, routers: RouterConfig[]) => {
   try {
     const emailKey = userEmail.toLowerCase().trim();
     if (!emailKey) return;
     const db = getFirestore();
     const userDocRef = doc(db, 'users', emailKey);
-    await setDoc(userDocRef, { savedRouters: routers }, { merge: true });
+    const sanitizedRouters = sanitizeForFirestore(routers);
+    await setDoc(userDocRef, { savedRouters: sanitizedRouters }, { merge: true });
   } catch (e) {
     console.error('Failed to sync saved routers to Firestore:', e);
   }
