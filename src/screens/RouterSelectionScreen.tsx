@@ -386,46 +386,154 @@ export default function RouterSelectionScreen({
     }
 
     setIsZeroTouchLoading(true);
-    setZeroTouchStatus('Step 1/2: Registering router profile in cloud...');
+    let step = 'Step 1/7: Checking router IP Cloud DDNS status...';
+    setZeroTouchStatus(step);
+
     try {
       const routerId = formRouterId || Date.now().toString();
-      const basicConfig: RouterConfig = {
+
+      // 1. Temporarily save config to local store so that API calls can communicate with the router
+      const tempConfig: RouterConfig = { ip, user, pass };
+      await saveConfig(tempConfig);
+
+      // 2. Fetch DDNS / Cloud settings from the router
+      let endpointHost = ip;
+      try {
+        const cloudData = await fetchSystemCloudAPI();
+        const cloudObj = Array.isArray(cloudData) ? cloudData[0] : cloudData;
+        if (!cloudObj || cloudObj['ddns-enabled'] !== 'true' || !cloudObj['dns-name']) {
+          step = 'Step 1/7: Enabling MikroTik IP Cloud DDNS...';
+          setZeroTouchStatus(step);
+          await enableSystemCloudAPI();
+          await new Promise(r => setTimeout(r, 2000));
+          const updatedCloud = await fetchSystemCloudAPI();
+          const updatedCloudObj = Array.isArray(updatedCloud) ? updatedCloud[0] : updatedCloud;
+          endpointHost = updatedCloudObj?.['dns-name'] || ip;
+        } else {
+          endpointHost = cloudObj['dns-name'];
+        }
+      } catch (err) {
+        console.warn('[ZeroTouch] Failed to enable DDNS. Using IP as host:', err);
+      }
+
+      // 3. Generate client Curve25519 keys on router
+      step = 'Step 2/7: Generating VPN keys on router...';
+      setZeroTouchStatus(step);
+      const tempIfaceName = `wg-temp-${Date.now()}`;
+      await createWireguardInterfaceAPI(tempIfaceName, 13999);
+      
+      const allWg = await fetchWireguardInterfacesAPI();
+      const tempIface = allWg.find((x: any) => x.name === tempIfaceName);
+      if (!tempIface || !tempIface['private-key'] || !tempIface['public-key']) {
+        throw new Error('Router failed to auto-generate keys for temporary interface.');
+      }
+      const clientPrivateKey = tempIface['private-key'];
+      const clientPublicKey = tempIface['public-key'];
+
+      // 4. Clean up temporary interface
+      step = 'Step 3/7: Cleaning up temporary keys...';
+      setZeroTouchStatus(step);
+      await deleteWireguardInterfaceAPI(tempIface['.id']);
+
+      // 5. Create main WireGuard interface wg-vpn
+      step = 'Step 4/7: Creating main WireGuard interface on router...';
+      setZeroTouchStatus(step);
+      const serverPort = 13232;
+      const serverIfaceName = `wg-vpn`;
+      const serverExists = allWg.some((x: any) => x.name === serverIfaceName);
+      const finalServerName = serverExists ? `wg-vpn-${Date.now()}` : serverIfaceName;
+
+      await createWireguardInterfaceAPI(finalServerName, serverPort);
+
+      const updatedWgList = await fetchWireguardInterfacesAPI();
+      const serverIface = updatedWgList.find((x: any) => x.name === finalServerName);
+      if (!serverIface || !serverIface['public-key']) {
+        throw new Error('Router failed to verify final VPN interface.');
+      }
+      const serverPublicKey = serverIface['public-key'];
+
+      // 6. Determine unique subnet index
+      step = 'Step 5/7: Allocating unique VPN subnet IP...';
+      setZeroTouchStatus(step);
+      let subnetIdx = 1;
+      const usedSubnets = savedRouters
+        .map(r => {
+          const match = (r.vpnIp || '').match(/^10\.8\.(\d+)\./);
+          return match ? parseInt(match[1]) : null;
+        })
+        .filter(n => n !== null);
+
+      while (usedSubnets.includes(subnetIdx)) {
+        subnetIdx++;
+      }
+
+      const routerVpnIp = `10.8.${subnetIdx}.1`;
+      const serverVpnIp = `10.8.${subnetIdx}.2`;
+
+      // 7. Assign IP address to wg-vpn interface
+      step = 'Step 6/7: Assigning IP address to router VPN interface...';
+      setZeroTouchStatus(step);
+      await assignWireguardIpAddressAPI(finalServerName, `${routerVpnIp}/24`);
+
+      // 8. Register the VPS Server peer on the router
+      step = 'Step 7/7: Creating peer config for VPS Server...';
+      setZeroTouchStatus(step);
+      await addWireguardPeerAPI(
+        finalServerName,
+        clientPublicKey, // VPS server's public key (the client key generated earlier)
+        '',
+        serverPort,
+        `${serverVpnIp}/32`
+      );
+
+      // Build the final complete router config
+      const completeConfig: RouterConfig = {
         id: routerId,
         name: (deviceName || ip).trim(),
         ip: ip.trim(),
         user: user.trim(),
         pass: pass,
         wifiName: wifiName.trim(),
-        isCloudManaged: true
+        vpnIp: routerVpnIp,
+        wgClientPrivateKey: sanitizeBase64Key(clientPrivateKey),
+        wgServerPublicKey: sanitizeBase64Key(serverPublicKey),
+        wgEndpointHost: endpointHost,
+        wgEndpointPort: serverPort.toString(),
+        wgClientIp: `${serverVpnIp}/24`,
+        isCloudManaged: true,
       };
 
-      // 1. Save locally and register to Firestore routers collection
+      // 9. Write to Firestore and save locally
+      await registerRouterToFirestore(completeConfig);
+
       const existingIdx = savedRouters.findIndex(r => r.id === routerId);
       let updated;
       if (existingIdx >= 0) {
-        updated = savedRouters.map(r => r.id === routerId ? { ...r, ...basicConfig } : r);
+        updated = savedRouters.map(r => r.id === routerId ? completeConfig : r);
       } else {
-        updated = [...savedRouters, basicConfig];
+        updated = [...savedRouters, completeConfig];
       }
       await onUpdateSavedRouters(updated);
-      await registerRouterToFirestore(basicConfig);
 
-      // 2. Call VPS to auto-configure WireGuard and start the tunnel
-      setZeroTouchStatus('Step 2/2: Auto-provisioning VPS WireGuard tunnel...');
-      const currentServerUrl = SERVER_URL;
-      const res = await fetch(`${currentServerUrl}/api/routers/${routerId}/wireguard/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const result = await res.json();
-      if (!res.ok || !result.success) {
-        throw new Error(result.error || 'Server provisioning failed.');
+      // 10. Call VPS to configure its own WireGuard tunnel side and bring it up
+      try {
+        const currentServerUrl = SERVER_URL;
+        const res = await fetch(`${currentServerUrl}/api/routers/${routerId}/wireguard/setup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || 'Server-side setup call failed.');
+        }
+      } catch (vpsErr: any) {
+        console.warn('[ZeroTouch] VPS WireGuard setup call failed:', vpsErr);
+        throw new Error(`VPS gateway setup failed: ${vpsErr.message || vpsErr}`);
       }
 
       Alert.alert(
         'Cloud VPN Success ✅',
-        `VPN Tunnel successfully configured and active!\n\nRouter VPN IP: ${result.routerVpnIp}\nVPS Server VPN IP: ${result.serverVpnIp}`
+        `VPN Tunnel successfully configured and active!\n\nRouter VPN IP: ${routerVpnIp}\nVPS Server VPN IP: ${serverVpnIp}`
       );
 
       setCurrentView('list');
@@ -434,7 +542,7 @@ export default function RouterSelectionScreen({
     } catch (e: any) {
       Alert.alert(
         'VPN Provisioning Failed ❌',
-        e.message || 'Failed to auto-provision VPS WireGuard tunnel.'
+        `Failed at: ${step}\n\n${e.message || 'Failed to auto-configure VPN on router.'}`
       );
     } finally {
       setIsZeroTouchLoading(false);
