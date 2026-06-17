@@ -190,6 +190,7 @@ export default function RouterSelectionScreen({
 
   // Interactivity state
   const [editingRouterId, setEditingRouterId] = useState<string | null>(null);
+  const [formRouterId, setFormRouterId] = useState<string>('');
   const [connectingRouterId, setConnectingRouterId] = useState<string | null>(null);
   const [connectingMode, setConnectingMode] = useState<'LOCAL' | 'VPN' | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -378,6 +379,69 @@ export default function RouterSelectionScreen({
     }
   };
 
+  const handleProvisionCloudVpn = async () => {
+    if (!ip || !user || !pass) {
+      Alert.alert('Validation Error', 'Please enter IP Address, Username, and Password to connect.');
+      return;
+    }
+
+    setIsZeroTouchLoading(true);
+    setZeroTouchStatus('Step 1/2: Registering router profile in cloud...');
+    try {
+      const routerId = formRouterId || Date.now().toString();
+      const basicConfig: RouterConfig = {
+        id: routerId,
+        name: (deviceName || ip).trim(),
+        ip: ip.trim(),
+        user: user.trim(),
+        pass: pass,
+        wifiName: wifiName.trim(),
+        isCloudManaged: true
+      };
+
+      // 1. Save locally and register to Firestore routers collection
+      const existingIdx = savedRouters.findIndex(r => r.id === routerId);
+      let updated;
+      if (existingIdx >= 0) {
+        updated = savedRouters.map(r => r.id === routerId ? { ...r, ...basicConfig } : r);
+      } else {
+        updated = [...savedRouters, basicConfig];
+      }
+      await onUpdateSavedRouters(updated);
+      await registerRouterToFirestore(basicConfig);
+
+      // 2. Call VPS to auto-configure WireGuard and start the tunnel
+      setZeroTouchStatus('Step 2/2: Auto-provisioning VPS WireGuard tunnel...');
+      const currentServerUrl = SERVER_URL;
+      const res = await fetch(`${currentServerUrl}/api/routers/${routerId}/wireguard/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Server provisioning failed.');
+      }
+
+      Alert.alert(
+        'Cloud VPN Success ✅',
+        `VPN Tunnel successfully configured and active!\n\nRouter VPN IP: ${result.routerVpnIp}\nVPS Server VPN IP: ${result.serverVpnIp}`
+      );
+
+      setCurrentView('list');
+      setEditingRouterId(null);
+      setFormRouterId('');
+    } catch (e: any) {
+      Alert.alert(
+        'VPN Provisioning Failed ❌',
+        e.message || 'Failed to auto-provision VPS WireGuard tunnel.'
+      );
+    } finally {
+      setIsZeroTouchLoading(false);
+      setZeroTouchStatus('');
+    }
+  };
+
   const handleZeroTouch = async () => {
     if (!ip || !user) {
       Alert.alert('Validation Error', 'Please fill in the Router IP, Username, and Password fields first to connect.');
@@ -468,7 +532,7 @@ export default function RouterSelectionScreen({
 
       // Build the complete router config and register to Firestore
       // so the VPS can discover it and establish its own WireGuard tunnel
-      const routerId = editingRouterId || Date.now().toString();
+      const routerId = formRouterId || Date.now().toString();
       const zeroTouchConfig: RouterConfig = {
         id: routerId,
         name: deviceName || ip,
@@ -486,7 +550,13 @@ export default function RouterSelectionScreen({
       await registerRouterToFirestore(zeroTouchConfig);
 
       // Add to local and synced saved routers list
-      const updated = [...savedRouters, zeroTouchConfig];
+      const existingIdx = savedRouters.findIndex(r => r.id === routerId);
+      let updated;
+      if (existingIdx >= 0) {
+        updated = savedRouters.map(r => r.id === routerId ? zeroTouchConfig : r);
+      } else {
+        updated = [...savedRouters, zeroTouchConfig];
+      }
       await onUpdateSavedRouters(updated);
 
       // Ask the VPS to establish its own WireGuard tunnel to this router
@@ -505,6 +575,10 @@ export default function RouterSelectionScreen({
         'Auto-Configuration Success ✅',
         `WireGuard VPN configured on router successfully!\n\nEndpoint: ${endpointHost}:${serverPort}\nRouter IP (VPN): ${serverVpnIp}\n\nRouter registered to cloud — VPS is establishing its tunnel.`
       );
+
+      setCurrentView('list');
+      setEditingRouterId(null);
+      setFormRouterId('');
     } catch (e: any) {
       Alert.alert(
         'Auto-Configuration Failed ❌',
@@ -607,6 +681,7 @@ export default function RouterSelectionScreen({
     setIsDiscoveredListVisible(false);
     
     setEditingRouterId(null);
+    setFormRouterId(Date.now().toString());
     setDeviceName(dev.name);
     setIp(dev.ip);
     setUser('admin');
@@ -632,6 +707,7 @@ export default function RouterSelectionScreen({
 
   const handleEditRouter = (router: RouterConfig) => {
     setEditingRouterId(router.id || null);
+    setFormRouterId(router.id || '');
     setDeviceName(router.name || '');
     setIp(router.ip);
     setUser(router.user);
@@ -655,53 +731,41 @@ export default function RouterSelectionScreen({
       return;
     }
 
-    if (editingRouterId) {
-      const existing = savedRouters.find(r => r.id === editingRouterId);
-      const updated = savedRouters.map(r => r.id === editingRouterId ? {
-        id: editingRouterId,
-        name: (deviceName || ip).trim(),
-        ip: ip.trim(),
-        user: user.trim(),
-        pass,
-        wifiName: wifiName.trim(),
-        vpnIp: vpnIp.trim(),
-        wgClientPrivateKey: sanitizeBase64Key(wgClientPrivateKey),
-        wgClientIp: wgClientIp.trim(),
-        wgServerPublicKey: sanitizeBase64Key(wgServerPublicKey),
-        wgEndpointHost: wgEndpointHost.trim(),
-        wgEndpointPort: wgEndpointPort.trim(),
-        wgAllowedIps: wgAllowedIps.trim(),
-        useVpn: existing ? existing.useVpn : false
-      } : r);
+    const routerId = formRouterId || Date.now().toString();
+    const routerConfig: RouterConfig = {
+      id: routerId,
+      name: (deviceName || ip).trim(),
+      ip: ip.trim(),
+      user: user.trim(),
+      pass,
+      wifiName: wifiName.trim(),
+      vpnIp: vpnIp.trim(),
+      wgClientPrivateKey: sanitizeBase64Key(wgClientPrivateKey),
+      wgClientIp: wgClientIp.trim(),
+      wgServerPublicKey: sanitizeBase64Key(wgServerPublicKey),
+      wgEndpointHost: wgEndpointHost.trim(),
+      wgEndpointPort: wgEndpointPort.trim(),
+      wgAllowedIps: wgAllowedIps.trim(),
+      useVpn: savedRouters.find(r => r.id === routerId)?.useVpn || false
+    };
+
+    const existingIdx = savedRouters.findIndex(r => r.id === routerId);
+    let updated;
+    if (existingIdx >= 0) {
+      updated = savedRouters.map(r => r.id === routerId ? routerConfig : r);
       await onUpdateSavedRouters(updated);
+      await registerRouterToFirestore(routerConfig);
       Alert.alert('Success', 'Router configuration updated!');
     } else {
-      const newId = Date.now().toString();
-      const newConfig: RouterConfig = {
-        id: newId,
-        name: (deviceName || ip).trim(),
-        ip: ip.trim(),
-        user: user.trim(),
-        pass,
-        wifiName: wifiName.trim(),
-        vpnIp: vpnIp.trim(),
-        wgClientPrivateKey: sanitizeBase64Key(wgClientPrivateKey),
-        wgClientIp: wgClientIp.trim(),
-        wgServerPublicKey: sanitizeBase64Key(wgServerPublicKey),
-        wgEndpointHost: wgEndpointHost.trim(),
-        wgEndpointPort: wgEndpointPort.trim(),
-        wgAllowedIps: wgAllowedIps.trim(),
-        useVpn: false
-      };
-      const updated = [...savedRouters, newConfig];
+      updated = [...savedRouters, routerConfig];
       await onUpdateSavedRouters(updated);
-      // Register to Firestore so VPS can discover this router
-      await registerRouterToFirestore(newConfig);
+      await registerRouterToFirestore(routerConfig);
       Alert.alert('Success', 'New router profile added!');
     }
 
     setCurrentView('list');
     setEditingRouterId(null);
+    setFormRouterId('');
   };
 
   const handleDeleteRouter = (router: RouterConfig) => {
@@ -866,6 +930,42 @@ export default function RouterSelectionScreen({
                 />
               </View>
             </View>
+          </View>
+
+          {/* Cloud VPN Provisioning Card */}
+          <View style={{
+            backgroundColor: colors.cardBg,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: colors.glassBorder,
+            padding: 16,
+            marginBottom: 16,
+            gap: 12
+          }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground, borderBottomWidth: 1, borderBottomColor: colors.glassBorder, paddingBottom: 8 }}>
+              Cloud VPN Configuration
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>
+              Enable cloud connection through our secure VPS gateway. This automatically configures a secure WireGuard tunnel on the MikroTik router.
+            </Text>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.primary,
+                paddingVertical: 12,
+                borderRadius: 12,
+                gap: 8,
+                marginTop: 6
+              }}
+              onPress={handleProvisionCloudVpn}
+            >
+              <Ionicons name="cloud-upload" size={16} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                Auto-Configure Cloud VPN & Connect
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* WireGuard VPN Settings Card */}
@@ -1980,6 +2080,7 @@ export default function RouterSelectionScreen({
                 onPress={() => {
                   setIsAddDrawerOpen(false);
                   setEditingRouterId(null);
+                  setFormRouterId(Date.now().toString());
                   setDeviceName('');
                   setIp('192.168.1.56');
                   setUser('admin');
