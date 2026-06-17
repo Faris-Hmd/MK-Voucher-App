@@ -725,49 +725,6 @@ export default function RouterSelectionScreen({
     setCurrentView('form');
   };
 
-  const handleSaveRouter = async () => {
-    if (!ip || !user) {
-      Alert.alert('Error', 'IP Address and Username are required');
-      return;
-    }
-
-    const routerId = formRouterId || Date.now().toString();
-    const routerConfig: RouterConfig = {
-      id: routerId,
-      name: (deviceName || ip).trim(),
-      ip: ip.trim(),
-      user: user.trim(),
-      pass,
-      wifiName: wifiName.trim(),
-      vpnIp: vpnIp.trim(),
-      wgClientPrivateKey: sanitizeBase64Key(wgClientPrivateKey),
-      wgClientIp: wgClientIp.trim(),
-      wgServerPublicKey: sanitizeBase64Key(wgServerPublicKey),
-      wgEndpointHost: wgEndpointHost.trim(),
-      wgEndpointPort: wgEndpointPort.trim(),
-      wgAllowedIps: wgAllowedIps.trim(),
-      useVpn: savedRouters.find(r => r.id === routerId)?.useVpn || false
-    };
-
-    const existingIdx = savedRouters.findIndex(r => r.id === routerId);
-    let updated;
-    if (existingIdx >= 0) {
-      updated = savedRouters.map(r => r.id === routerId ? routerConfig : r);
-      await onUpdateSavedRouters(updated);
-      await registerRouterToFirestore(routerConfig);
-      Alert.alert('Success', 'Router configuration updated!');
-    } else {
-      updated = [...savedRouters, routerConfig];
-      await onUpdateSavedRouters(updated);
-      await registerRouterToFirestore(routerConfig);
-      Alert.alert('Success', 'New router profile added!');
-    }
-
-    setCurrentView('list');
-    setEditingRouterId(null);
-    setFormRouterId('');
-  };
-
   const handleDeleteRouter = (router: RouterConfig) => {
     Alert.alert(
       'Delete Router',
@@ -968,42 +925,6 @@ export default function RouterSelectionScreen({
             </View>
           </View>
 
-          {/* Cloud VPN Provisioning Card */}
-          <View style={{
-            backgroundColor: colors.cardBg,
-            borderRadius: 16,
-            borderWidth: 1.5,
-            borderColor: colors.glassBorder,
-            padding: 16,
-            marginBottom: 16,
-            gap: 12
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground, borderBottomWidth: 1, borderBottomColor: colors.glassBorder, paddingBottom: 8 }}>
-              Cloud VPN Configuration
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>
-              Enable cloud connection through our secure VPS gateway. This automatically configures a secure WireGuard tunnel on the MikroTik router.
-            </Text>
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: colors.primary,
-                paddingVertical: 12,
-                borderRadius: 12,
-                gap: 8,
-                marginTop: 6
-              }}
-              onPress={handleProvisionCloudVpn}
-            >
-              <Ionicons name="cloud-upload" size={16} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
-                Auto-Configure Cloud VPN & Connect
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Form Actions Footer Row */}
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
             <TouchableOpacity 
@@ -1026,17 +947,20 @@ export default function RouterSelectionScreen({
             </TouchableOpacity>
             <TouchableOpacity 
               style={{ 
-                flex: 1.5, 
+                flex: 1.8, 
                 height: 48, 
                 borderRadius: 14, 
                 alignItems: 'center', 
                 justifyContent: 'center', 
-                backgroundColor: colors.primary 
+                backgroundColor: colors.primary,
+                flexDirection: 'row',
+                gap: 6
               }} 
-              onPress={handleSaveRouter}
+              onPress={handleProvisionCloudVpn}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-                {editingRouterId ? 'Save Changes' : 'Create Profile'}
+              <Ionicons name="cloud-upload" size={16} color="#fff" />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>
+                {editingRouterId ? 'Save Changes' : 'Auto-Configure Cloud VPN'}
               </Text>
             </TouchableOpacity>
           </View>
