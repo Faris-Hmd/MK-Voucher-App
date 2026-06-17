@@ -137,6 +137,7 @@ export default function RouterSelectionScreen({
           ip: '127.0.0.1', // Not used directly — server proxies to router
           user: p.user,
           pass: p.pass,
+          vpnIp: p.vpnIp,
           isCloudManaged: true,
         }));
 
@@ -456,15 +457,27 @@ export default function RouterSelectionScreen({
       step = 'Step 5/7: Allocating unique VPN subnet IP...';
       setZeroTouchStatus(step);
       let subnetIdx = 1;
-      const usedSubnets = savedRouters
-        .map(r => {
-          const match = (r.vpnIp || '').match(/^10\.8\.(\d+)\./);
-          return match ? parseInt(match[1]) : null;
-        })
-        .filter(n => n !== null);
+      try {
+        const currentServerUrl = SERVER_URL;
+        const subRes = await fetch(`${currentServerUrl}/api/routers/next-subnet`);
+        if (subRes.ok) {
+          const subData = await subRes.json();
+          if (subData && typeof subData.subnetIdx === 'number') {
+            subnetIdx = subData.subnetIdx;
+          }
+        }
+      } catch (err) {
+        // Fallback to client-side allocation in case server is offline/unreachable
+        const usedSubnets = savedRouters
+          .map(r => {
+            const match = (r.vpnIp || '').match(/^10\.8\.(\d+)\./);
+            return match ? parseInt(match[1]) : null;
+          })
+          .filter(n => n !== null);
 
-      while (usedSubnets.includes(subnetIdx)) {
-        subnetIdx++;
+        while (usedSubnets.includes(subnetIdx)) {
+          subnetIdx++;
+        }
       }
 
       const routerVpnIp = `10.8.${subnetIdx}.1`;
@@ -521,6 +534,7 @@ export default function RouterSelectionScreen({
         const res = await fetch(`${currentServerUrl}/api/routers/${routerId}/wireguard/setup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(completeConfig),
         });
         const result = await res.json();
         if (!res.ok || !result.success) {
