@@ -387,7 +387,7 @@ export default function RouterSelectionScreen({
     }
 
     setIsZeroTouchLoading(true);
-    let step = 'Step 1/7: Checking router IP Cloud DDNS status...';
+    let step = 'Step 1/7: Allocating unique VPN subnet IP...';
     setZeroTouchStatus(step);
 
     try {
@@ -397,65 +397,7 @@ export default function RouterSelectionScreen({
       const tempConfig: RouterConfig = { ip, user, pass };
       await saveConfig(tempConfig);
 
-      // 2. Fetch DDNS / Cloud settings from the router
-      let endpointHost = ip;
-      try {
-        const cloudData = await fetchSystemCloudAPI();
-        const cloudObj = Array.isArray(cloudData) ? cloudData[0] : cloudData;
-        if (!cloudObj || cloudObj['ddns-enabled'] !== 'true' || !cloudObj['dns-name']) {
-          step = 'Step 1/7: Enabling MikroTik IP Cloud DDNS...';
-          setZeroTouchStatus(step);
-          await enableSystemCloudAPI();
-          await new Promise(r => setTimeout(r, 2000));
-          const updatedCloud = await fetchSystemCloudAPI();
-          const updatedCloudObj = Array.isArray(updatedCloud) ? updatedCloud[0] : updatedCloud;
-          endpointHost = updatedCloudObj?.['dns-name'] || ip;
-        } else {
-          endpointHost = cloudObj['dns-name'];
-        }
-      } catch (err) {
-        console.warn('[ZeroTouch] Failed to enable DDNS. Using IP as host:', err);
-      }
-
-      // 3. Generate client Curve25519 keys on router
-      step = 'Step 2/7: Generating VPN keys on router...';
-      setZeroTouchStatus(step);
-      const tempIfaceName = `wg-temp-${Date.now()}`;
-      await createWireguardInterfaceAPI(tempIfaceName, 13999);
-      
-      const allWg = await fetchWireguardInterfacesAPI();
-      const tempIface = allWg.find((x: any) => x.name === tempIfaceName);
-      if (!tempIface || !tempIface['private-key'] || !tempIface['public-key']) {
-        throw new Error('Router failed to auto-generate keys for temporary interface.');
-      }
-      const clientPrivateKey = tempIface['private-key'];
-      const clientPublicKey = tempIface['public-key'];
-
-      // 4. Clean up temporary interface
-      step = 'Step 3/7: Cleaning up temporary keys...';
-      setZeroTouchStatus(step);
-      await deleteWireguardInterfaceAPI(tempIface['.id']);
-
-      // 5. Create main WireGuard interface wg-vpn
-      step = 'Step 4/7: Creating main WireGuard interface on router...';
-      setZeroTouchStatus(step);
-      const serverPort = 13232;
-      const serverIfaceName = `wg-vpn`;
-      const serverExists = allWg.some((x: any) => x.name === serverIfaceName);
-      const finalServerName = serverExists ? `wg-vpn-${Date.now()}` : serverIfaceName;
-
-      await createWireguardInterfaceAPI(finalServerName, serverPort);
-
-      const updatedWgList = await fetchWireguardInterfacesAPI();
-      const serverIface = updatedWgList.find((x: any) => x.name === finalServerName);
-      if (!serverIface || !serverIface['public-key']) {
-        throw new Error('Router failed to verify final VPN interface.');
-      }
-      const serverPublicKey = serverIface['public-key'];
-
-      // 6. Determine unique subnet index
-      step = 'Step 5/7: Allocating unique VPN subnet IP...';
-      setZeroTouchStatus(step);
+      // 2. Allocate unique subnet index
       let subnetIdx = 1;
       try {
         const currentServerUrl = SERVER_URL;
@@ -482,6 +424,71 @@ export default function RouterSelectionScreen({
 
       const routerVpnIp = `10.8.${subnetIdx}.1`;
       const serverVpnIp = `10.8.${subnetIdx}.2`;
+      const serverPort = 13000 + subnetIdx;
+
+      // Parse VPS public host/IP from SERVER_URL
+      let vpsHost = '';
+      try {
+        const match = SERVER_URL.match(/^(?:https?:\/\/)?([^/:]+)/);
+        vpsHost = match ? match[1] : '';
+      } catch (err) {
+        console.warn('Failed to parse VPS host from SERVER_URL:', err);
+      }
+
+      // 3. Fetch DDNS / Cloud settings from the router (if supported)
+      step = 'Step 2/7: Checking router IP Cloud DDNS status...';
+      setZeroTouchStatus(step);
+      let endpointHost = ip;
+      try {
+        const cloudData = await fetchSystemCloudAPI();
+        const cloudObj = Array.isArray(cloudData) ? cloudData[0] : cloudData;
+        if (!cloudObj || cloudObj['ddns-enabled'] !== 'true' || !cloudObj['dns-name']) {
+          await enableSystemCloudAPI();
+          await new Promise(r => setTimeout(r, 2000));
+          const updatedCloud = await fetchSystemCloudAPI();
+          const updatedCloudObj = Array.isArray(updatedCloud) ? updatedCloud[0] : updatedCloud;
+          endpointHost = updatedCloudObj?.['dns-name'] || ip;
+        } else {
+          endpointHost = cloudObj['dns-name'];
+        }
+      } catch (err) {
+        console.warn('[ZeroTouch] Failed to enable DDNS or not supported (CHR/VM). Using IP as fallback:', err);
+      }
+
+      // 4. Generate client Curve25519 keys on router
+      step = 'Step 3/7: Generating VPN keys on router...';
+      setZeroTouchStatus(step);
+      const tempIfaceName = `wg-temp-${Date.now()}`;
+      await createWireguardInterfaceAPI(tempIfaceName, 13999);
+      
+      const allWg = await fetchWireguardInterfacesAPI();
+      const tempIface = allWg.find((x: any) => x.name === tempIfaceName);
+      if (!tempIface || !tempIface['private-key'] || !tempIface['public-key']) {
+        throw new Error('Router failed to auto-generate keys for temporary interface.');
+      }
+      const clientPrivateKey = tempIface['private-key'];
+      const clientPublicKey = tempIface['public-key'];
+
+      // 5. Clean up temporary interface
+      step = 'Step 4/7: Cleaning up temporary keys...';
+      setZeroTouchStatus(step);
+      await deleteWireguardInterfaceAPI(tempIface['.id']);
+
+      // 6. Create main WireGuard interface wg-vpn
+      step = 'Step 5/7: Creating main WireGuard interface on router...';
+      setZeroTouchStatus(step);
+      const serverIfaceName = `wg-vpn`;
+      const serverExists = allWg.some((x: any) => x.name === serverIfaceName);
+      const finalServerName = serverExists ? `wg-vpn-${Date.now()}` : serverIfaceName;
+
+      await createWireguardInterfaceAPI(finalServerName, serverPort);
+
+      const updatedWgList = await fetchWireguardInterfacesAPI();
+      const serverIface = updatedWgList.find((x: any) => x.name === finalServerName);
+      if (!serverIface || !serverIface['public-key']) {
+        throw new Error('Router failed to verify final VPN interface.');
+      }
+      const serverPublicKey = serverIface['public-key'];
 
       // 7. Assign IP address to wg-vpn interface
       step = 'Step 6/7: Assigning IP address to router VPN interface...';
@@ -491,10 +498,15 @@ export default function RouterSelectionScreen({
       // 8. Register the VPS Server peer on the router
       step = 'Step 7/7: Creating peer config for VPS Server...';
       setZeroTouchStatus(step);
+      
+      // If the router is private/NATed (no cloud DDNS), configure it to connect directly to the VPS server
+      const isPrivateRouter = !endpointHost || endpointHost === ip || endpointHost.startsWith('192.168.') || endpointHost.startsWith('10.');
+      const peerEndpointAddress = isPrivateRouter ? vpsHost : '';
+
       await addWireguardPeerAPI(
         finalServerName,
-        clientPublicKey, // VPS server's public key (the client key generated earlier)
-        '',
+        clientPublicKey, // VPS server's public key
+        peerEndpointAddress,
         serverPort,
         `${serverVpnIp}/32`
       );
