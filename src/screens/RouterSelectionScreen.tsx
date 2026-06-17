@@ -847,12 +847,48 @@ export default function RouterSelectionScreen({
           </View>
         </View>
 
-        {isZeroTouchLoading && (
-          <View style={{ padding: 16, backgroundColor: colors.cardBg, borderRadius: 16, borderWidth: 1.5, borderColor: colors.glassBorder, marginBottom: 16, alignItems: 'center', gap: 10 }}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600', textAlign: 'center' }}>{zeroTouchStatus}</Text>
+        <Modal
+          visible={isZeroTouchLoading}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={{
+            flex: 1,
+            backgroundColor: 'rgba(3, 7, 18, 0.85)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}>
+            <View style={{
+              padding: 24,
+              borderRadius: 20,
+              borderWidth: 1.5,
+              borderColor: colors.glassBorder,
+              backgroundColor: colors.cardBg,
+              alignItems: 'center',
+              gap: 16,
+              width: '85%',
+              maxWidth: 320,
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.15,
+              shadowRadius: 20,
+              elevation: 10,
+            }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.foreground, textAlign: 'center' }}>
+                Configuring VPN
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 18 }}>
+                {zeroTouchStatus}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '600', textAlign: 'center', opacity: 0.8 }}>
+                Please do not close the app
+              </Text>
+            </View>
           </View>
-        )}
+        </Modal>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           {/* General Router Settings Card */}
@@ -966,229 +1002,6 @@ export default function RouterSelectionScreen({
                 Auto-Configure Cloud VPN & Connect
               </Text>
             </TouchableOpacity>
-          </View>
-
-          {/* WireGuard VPN Settings Card */}
-          <View style={{
-            backgroundColor: colors.cardBg,
-            borderRadius: 16,
-            borderWidth: 1.5,
-            borderColor: colors.glassBorder,
-            padding: 16,
-            marginBottom: 16,
-            gap: 14
-          }}>
-            <TouchableOpacity 
-              onPress={() => setIsWgSectionExpanded(!isWgSectionExpanded)}
-              style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                justifyContent: 'space-between',
-                paddingBottom: isWgSectionExpanded ? 8 : 0,
-                borderBottomWidth: isWgSectionExpanded ? 1 : 0,
-                borderBottomColor: colors.glassBorder
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground }}>
-                  WireGuard VPN (Optional)
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {/* Router WG status badge */}
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 3,
-                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-                  backgroundColor: wgServerPublicKey ? '#22c55e15' : '#ef444415',
-                  borderWidth: 1,
-                  borderColor: wgServerPublicKey ? '#22c55e30' : '#ef444430',
-                }}>
-                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: wgServerPublicKey ? '#22c55e' : '#ef4444' }} />
-                  <Text style={{ fontSize: 8, fontWeight: '700', color: wgServerPublicKey ? '#22c55e' : '#ef4444' }}>
-                    {wgServerPublicKey ? 'ROUTER ✓' : 'ROUTER ✗'}
-                  </Text>
-                </View>
-                {/* Client key status badge */}
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 3,
-                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-                  backgroundColor: wgClientPrivateKey ? '#22c55e15' : '#ef444415',
-                  borderWidth: 1,
-                  borderColor: wgClientPrivateKey ? '#22c55e30' : '#ef444430',
-                }}>
-                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: wgClientPrivateKey ? '#22c55e' : '#ef4444' }} />
-                  <Text style={{ fontSize: 8, fontWeight: '700', color: wgClientPrivateKey ? '#22c55e' : '#ef4444' }}>
-                    {wgClientPrivateKey ? 'CLIENT ✓' : 'CLIENT ✗'}
-                  </Text>
-                </View>
-                <Ionicons name={isWgSectionExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
-              </View>
-            </TouchableOpacity>
-
-            {isWgSectionExpanded && (
-              <View style={{ gap: 14, marginTop: 4 }}>
-                {/* Auto Config Button */}
-                <TouchableOpacity
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: colors.primary,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    gap: 8,
-                  }}
-                  onPress={handleZeroTouch}
-                >
-                  <Ionicons name="flash" size={16} color="#fff" />
-                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Auto-Configure VPN on Router</Text>
-                </TouchableOpacity>
-
-                {/* Import Buttons Row */}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.secondary,
-                      borderWidth: 1.5,
-                      borderColor: colors.glassBorder,
-                      paddingVertical: 10,
-                      borderRadius: 10,
-                      gap: 6,
-                    }}
-                    onPress={handleImportFromClipboard}
-                  >
-                    <Ionicons name="clipboard-outline" size={14} color={colors.foreground} />
-                    <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>Clipboard</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.secondary,
-                      borderWidth: 1.5,
-                      borderColor: colors.glassBorder,
-                      paddingVertical: 10,
-                      borderRadius: 10,
-                      gap: 6,
-                    }}
-                    onPress={() => {
-                      setImportText('');
-                      setIsImportTextModalVisible(true);
-                    }}
-                  >
-                    <Ionicons name="document-text-outline" size={14} color={colors.foreground} />
-                    <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>Paste Text</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Advanced toggle button */}
-                <TouchableOpacity 
-                  onPress={() => setShowAdvancedWg(!showAdvancedWg)}
-                  style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    marginTop: 4,
-                    paddingVertical: 6
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted }}>
-                    {showAdvancedWg ? 'HIDE MANUAL DETAILS' : 'SHOW ADVANCED/MANUAL CONFIG'}
-                  </Text>
-                  <Ionicons 
-                    name={showAdvancedWg ? "chevron-up" : "chevron-down"} 
-                    size={12} 
-                    color={colors.textMuted} 
-                    style={{ marginLeft: 4 }} 
-                  />
-                </TouchableOpacity>
-
-                {/* Manual Connection Inputs */}
-                {showAdvancedWg && (
-                  <View style={{ gap: 14, marginTop: 4 }}>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>VPN Router IP</Text>
-                        <TextInput 
-                          style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 12, color: colors.foreground }}
-                          value={vpnIp}
-                          onChangeText={setVpnIp}
-                          placeholder="10.88.0.1"
-                          placeholderTextColor={colors.textMuted}
-                        />
-                      </View>
-                      <View style={{ flex: 1.2 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Client Tunnel IP</Text>
-                        <TextInput 
-                          style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 12, color: colors.foreground }}
-                          value={wgClientIp}
-                          onChangeText={setWgClientIp}
-                          placeholder="10.88.0.2/24"
-                          placeholderTextColor={colors.textMuted}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <View style={{ flex: 1.2 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Endpoint DDNS / IP</Text>
-                        <TextInput 
-                          style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 12, color: colors.foreground }}
-                          value={wgEndpointHost}
-                          onChangeText={setWgEndpointHost}
-                          placeholder="ddns.mynetname.net"
-                          placeholderTextColor={colors.textMuted}
-                          autoCapitalize="none"
-                        />
-                      </View>
-                      <View style={{ flex: 0.8 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Endpoint Port</Text>
-                        <TextInput 
-                          style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 12, color: colors.foreground }}
-                          value={wgEndpointPort}
-                          onChangeText={setWgEndpointPort}
-                          placeholder="13231"
-                          placeholderTextColor={colors.textMuted}
-                          keyboardType="numeric"
-                        />
-                      </View>
-                    </View>
-
-                    <View>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Server Public Key</Text>
-                      <TextInput 
-                        style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 11, color: colors.foreground }}
-                        value={wgServerPublicKey}
-                        onChangeText={setWgServerPublicKey}
-                        placeholder="Base64 Server Public Key"
-                        placeholderTextColor={colors.textMuted}
-                        autoCapitalize="none"
-                      />
-                    </View>
-
-                    <View>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Client Private Key</Text>
-                      <TextInput 
-                        style={{ height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: colors.glassBorder, backgroundColor: colors.inputBg, paddingHorizontal: 10, fontSize: 11, color: colors.foreground }}
-                        value={wgClientPrivateKey}
-                        onChangeText={setWgClientPrivateKey}
-                        placeholder="Base64 Client Private Key"
-                        placeholderTextColor={colors.textMuted}
-                        autoCapitalize="none"
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
           </View>
 
           {/* Form Actions Footer Row */}
