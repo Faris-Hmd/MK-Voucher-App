@@ -17,6 +17,7 @@ export interface RouterConfig {
   wgEndpointHost?: string;
   wgEndpointPort?: string;
   wgAllowedIps?: string;
+  model?: 'hap-ax2' | 'l009' | 'other';
 }
 
 const CONFIG_KEY = '@router_config';
@@ -51,7 +52,18 @@ export const saveSavedRouters = async (routers: RouterConfig[]) => {
 export const loadSavedRouters = async (): Promise<RouterConfig[]> => {
   try {
     const jsonValue = await AsyncStorage.getItem(SAVED_ROUTERS_KEY);
-    return jsonValue != null ? JSON.parse(jsonValue) : [];
+    if (jsonValue != null) {
+      const parsed = JSON.parse(jsonValue);
+      // Failsafe: if we accidentally saved a single object instead of an array, wrap it
+      if (!Array.isArray(parsed)) {
+        if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0) {
+          return [parsed as RouterConfig];
+        }
+        return [];
+      }
+      return parsed;
+    }
+    return [];
   } catch (e) {
     console.error('Failed to load routers list', e);
     return [];
@@ -114,21 +126,26 @@ export const registerRouterToFirestore = async (router: RouterConfig): Promise<v
     if (!router.id) return;
     const db = getFirestore();
     const routerDocRef = doc(db, 'routers', router.id);
-    await setDoc(routerDocRef, {
+    const dataToSave: any = {
       id: router.id,
       name: router.name || router.ip,
       ip: router.ip,
       user: router.user,
       pass: router.pass,
-      vpnIp: router.vpnIp || '',
-      wgClientPrivateKey: router.wgClientPrivateKey || '',
-      wgServerPublicKey: router.wgServerPublicKey || '',
-      wgEndpointHost: router.wgEndpointHost || '',
-      wgEndpointPort: router.wgEndpointPort || '13231',
-      wgClientIp: router.wgClientIp || '10.88.0.2/24',
+      wifiName: router.wifiName || '',
+      model: router.model || 'other',
       isCloudManaged: router.isCloudManaged || false,
       registeredAt: new Date().toISOString(),
-    });
+    };
+    
+    if (router.vpnIp !== undefined) dataToSave.vpnIp = router.vpnIp;
+    if (router.wgClientPrivateKey !== undefined) dataToSave.wgClientPrivateKey = router.wgClientPrivateKey;
+    if (router.wgServerPublicKey !== undefined) dataToSave.wgServerPublicKey = router.wgServerPublicKey;
+    if (router.wgEndpointHost !== undefined) dataToSave.wgEndpointHost = router.wgEndpointHost;
+    if (router.wgEndpointPort !== undefined) dataToSave.wgEndpointPort = router.wgEndpointPort;
+    if (router.wgClientIp !== undefined) dataToSave.wgClientIp = router.wgClientIp;
+
+    await setDoc(routerDocRef, dataToSave, { merge: true });
     console.log(`[Firestore] Router "${router.name}" registered to routers/${router.id}`);
   } catch (e) {
     console.error('Failed to register router to Firestore:', e);

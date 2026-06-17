@@ -34,7 +34,7 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 };
 
-export let SERVER_URL = 'http://187.127.234.201:3000';
+export let SERVER_URL = 'https://187-127-234-201.nip.io';
 export const setServerUrl = (url: string) => {
   SERVER_URL = url;
 };

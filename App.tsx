@@ -93,7 +93,11 @@ function AppInner() {
       // Load saved server URL
       const savedServerUrl = await loadServerUrl();
       if (savedServerUrl) {
-        setServerUrl(savedServerUrl);
+        if (savedServerUrl.includes('187.127.234.201')) {
+          setServerUrl('https://187-127-234-201.nip.io');
+        } else {
+          setServerUrl(savedServerUrl); // Set saved server URL
+        }
       }
 
       // 2. Load Firestore saved routers
