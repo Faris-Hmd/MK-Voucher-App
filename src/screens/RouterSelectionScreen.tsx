@@ -140,19 +140,28 @@ export default function RouterSelectionScreen({
           isCloudManaged: true,
         }));
 
-        // Merge: add cloud routers not already in savedRouters
-        const existingIds = new Set(savedRouters.map(r => r.id));
-        const newCloudRouters = cloudConfigs.filter(r => !existingIds.has(r.id));
-        if (newCloudRouters.length > 0) {
-          await onUpdateSavedRouters([...newCloudRouters, ...savedRouters]);
-        } else {
-          // Update credentials for existing cloud routers in case they changed
-          const updated = savedRouters.map(r => {
-            const cloudMatch = cloudConfigs.find(c => c.id === r.id);
-            return cloudMatch ? { ...r, ...cloudMatch } : r;
-          });
-          const hasChanges = JSON.stringify(updated) !== JSON.stringify(savedRouters);
-          if (hasChanges) await onUpdateSavedRouters(updated);
+        // Sync: filter out stale cloud routers, update existing ones, and add new ones
+        const cloudIds = new Set(cloudConfigs.map(c => c.id));
+        let updated = savedRouters.filter(r => !r.isCloudManaged || (r.id && cloudIds.has(r.id)));
+        let hasChanges = updated.length !== savedRouters.length;
+
+        cloudConfigs.forEach(cloudRouter => {
+          const idx = updated.findIndex(r => r.id === cloudRouter.id);
+          if (idx >= 0) {
+            const current = updated[idx];
+            const merged = { ...current, ...cloudRouter };
+            if (JSON.stringify(current) !== JSON.stringify(merged)) {
+              updated[idx] = merged;
+              hasChanges = true;
+            }
+          } else {
+            updated.unshift(cloudRouter); // Add new ones to the top
+            hasChanges = true;
+          }
+        });
+
+        if (hasChanges) {
+          await onUpdateSavedRouters(updated);
         }
       } catch (e) {
         // Server unreachable — use existing saved routers
