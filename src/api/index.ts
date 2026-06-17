@@ -18,10 +18,12 @@ const btoa = (input: string) => {
   return output;
 };
 
-const getAuthHeaders = async () => {
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured. Please go to Settings.");
 
+  // Always include Basic Auth — VPS proxy forwards it to the router,
+  // and local routers need it for direct authentication.
   const auth = btoa(`${config.user}:${config.pass}`);
   return {
     'Authorization': `Basic ${auth}`,
@@ -41,6 +43,12 @@ const getBaseUrl = async () => {
   const config = await loadConfig();
   if (!config) throw new Error("Router not configured.");
 
+  // Local (non-cloud-managed) routers: connect directly to router IP
+  if (!config.isCloudManaged) {
+    return `http://${config.ip}`;
+  }
+
+  // Cloud-managed routers: route through VPS proxy
   const routerId = config.id || 'ROUTER_01';
   return `${SERVER_URL}/api/routers/${routerId}`;
 };

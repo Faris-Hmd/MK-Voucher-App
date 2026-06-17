@@ -5,7 +5,9 @@ import {
   saveConfig, 
   RouterConfig,
   saveServerUrl,
-  loadServerUrl
+  loadServerUrl,
+  registerRouterToFirestore,
+  deleteRouterFromFirestore
 } from '../store';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth, signOut } from '@react-native-firebase/auth';
@@ -374,7 +376,9 @@ export default function RouterSelectionScreen({
     }
 
     setIsZeroTouchLoading(true);
-    setZeroTouchStatus('Step 1/6: Checking router IP Cloud DDNS status...');
+    // Local variable mirrors state — avoids stale closure in catch block
+    let step = 'Step 1/6: Checking router IP Cloud DDNS status...';
+    setZeroTouchStatus(step);
     try {
       const tempConfig: RouterConfig = { ip, user, pass };
       await saveConfig(tempConfig);
@@ -384,7 +388,8 @@ export default function RouterSelectionScreen({
         const cloudData = await fetchSystemCloudAPI();
         const cloudObj = Array.isArray(cloudData) ? cloudData[0] : cloudData;
         if (!cloudObj || cloudObj['ddns-enabled'] !== 'true' || !cloudObj['dns-name']) {
-          setZeroTouchStatus('Step 1/6: Enabling MikroTik IP Cloud DDNS...');
+          step = 'Step 1/6: Enabling MikroTik IP Cloud DDNS...';
+          setZeroTouchStatus(step);
           await enableSystemCloudAPI();
           await new Promise(r => setTimeout(r, 2000));
           const updatedCloud = await fetchSystemCloudAPI();
@@ -393,11 +398,12 @@ export default function RouterSelectionScreen({
         } else {
           endpointHost = cloudObj['dns-name'];
         }
-      } catch (cloudErr) {
-        console.warn('Failed to check/enable cloud DDNS:', cloudErr);
+      } catch {
+        // Router doesn't have ip-cloud package — use local IP as endpoint (expected)
       }
 
-      setZeroTouchStatus('Step 2/6: Generating client Curve25519 keys on router...');
+      step = 'Step 2/6: Generating client Curve25519 keys on router...';
+      setZeroTouchStatus(step);
       const tempIfaceName = `wg-temp-${Date.now()}`;
       await createWireguardInterfaceAPI(tempIfaceName, 13999);
       
@@ -409,10 +415,12 @@ export default function RouterSelectionScreen({
       const clientPrivateKey = tempIface['private-key'];
       const clientPublicKey = tempIface['public-key'];
 
-      setZeroTouchStatus('Step 3/6: Cleaning up temporary keys...');
+      step = 'Step 3/6: Cleaning up temporary keys...';
+      setZeroTouchStatus(step);
       await deleteWireguardInterfaceAPI(tempIface['.id']);
 
-      setZeroTouchStatus('Step 4/6: Creating main WireGuard interface...');
+      step = 'Step 4/6: Creating main WireGuard interface...';
+      setZeroTouchStatus(step);
       const serverPort = 13231;
       const serverIfaceName = `wg-vpn`;
       const serverExists = allWg.some((x: any) => x.name === serverIfaceName);
@@ -427,11 +435,13 @@ export default function RouterSelectionScreen({
       }
       const serverPublicKey = serverIface['public-key'];
 
-      setZeroTouchStatus('Step 5/6: Assigning IP address...');
+      step = 'Step 5/6: Assigning IP address...';
+      setZeroTouchStatus(step);
       const serverVpnIp = vpnIp || '10.88.0.1';
-      await assignWireguardIpAddressAPI(`${serverVpnIp}/24`, finalServerName);
+      await assignWireguardIpAddressAPI(finalServerName, `${serverVpnIp}/24`);
 
-      setZeroTouchStatus('Step 6/6: Creating peer config...');
+      step = 'Step 6/6: Creating peer config...';
+      setZeroTouchStatus(step);
       const clientVpnIp = wgClientIp.split('/')[0] || '10.88.0.2';
       await addWireguardPeerAPI(
         finalServerName,
@@ -447,9 +457,46 @@ export default function RouterSelectionScreen({
       setWgEndpointPort(serverPort.toString());
       setShowAdvancedWg(true);
 
-      Alert.alert('Auto-Configuration Success', 'WireGuard VPN configured on router successfully!');
+      // Build the complete router config and register to Firestore
+      // so the VPS can discover it and establish its own WireGuard tunnel
+      const routerId = editingRouterId || Date.now().toString();
+      const zeroTouchConfig: RouterConfig = {
+        id: routerId,
+        name: deviceName || ip,
+        ip,
+        user,
+        pass,
+        vpnIp: serverVpnIp,
+        wgClientPrivateKey: sanitizeBase64Key(clientPrivateKey),
+        wgServerPublicKey: sanitizeBase64Key(serverPublicKey),
+        wgEndpointHost: endpointHost,
+        wgEndpointPort: serverPort.toString(),
+        wgClientIp: wgClientIp || '10.88.0.2/24',
+        isCloudManaged: false,
+      };
+      await registerRouterToFirestore(zeroTouchConfig);
+
+      // Ask the VPS to establish its own WireGuard tunnel to this router
+      try {
+        const currentServerUrl = SERVER_URL;
+        await fetch(`${currentServerUrl}/api/routers/${routerId}/wireguard/setup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        console.log('[ZeroTouch] VPS WireGuard setup triggered for router', routerId);
+      } catch (vpsErr) {
+        console.warn('[ZeroTouch] VPS WireGuard setup call failed (non-blocking):', vpsErr);
+      }
+
+      Alert.alert(
+        'Auto-Configuration Success ✅',
+        `WireGuard VPN configured on router successfully!\n\nEndpoint: ${endpointHost}:${serverPort}\nRouter IP (VPN): ${serverVpnIp}\n\nRouter registered to cloud — VPS is establishing its tunnel.`
+      );
     } catch (e: any) {
-      Alert.alert('Auto-Configuration Failed', e.message || 'Verification of router configuration failed.');
+      Alert.alert(
+        'Auto-Configuration Failed ❌',
+        `Failed at: ${step}\n\n${e.message || 'Verification of router configuration failed.'}\n\nNote: Any WireGuard interfaces already created on the router may need to be removed manually.`
+      );
     } finally {
       setIsZeroTouchLoading(false);
       setZeroTouchStatus('');
@@ -635,6 +682,8 @@ export default function RouterSelectionScreen({
       };
       const updated = [...savedRouters, newConfig];
       await onUpdateSavedRouters(updated);
+      // Register to Firestore so VPS can discover this router
+      await registerRouterToFirestore(newConfig);
       Alert.alert('Success', 'New router profile added!');
     }
 
@@ -654,6 +703,8 @@ export default function RouterSelectionScreen({
           onPress: async () => {
             const updated = savedRouters.filter(r => r.id !== router.id);
             await onUpdateSavedRouters(updated);
+            // Remove from Firestore global registry
+            if (router.id) await deleteRouterFromFirestore(router.id);
           }
         }
       ]
@@ -831,7 +882,35 @@ export default function RouterSelectionScreen({
                   WireGuard VPN (Optional)
                 </Text>
               </View>
-              <Ionicons name={isWgSectionExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {/* Router WG status badge */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 3,
+                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+                  backgroundColor: wgServerPublicKey ? '#22c55e15' : '#ef444415',
+                  borderWidth: 1,
+                  borderColor: wgServerPublicKey ? '#22c55e30' : '#ef444430',
+                }}>
+                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: wgServerPublicKey ? '#22c55e' : '#ef4444' }} />
+                  <Text style={{ fontSize: 8, fontWeight: '700', color: wgServerPublicKey ? '#22c55e' : '#ef4444' }}>
+                    {wgServerPublicKey ? 'ROUTER ✓' : 'ROUTER ✗'}
+                  </Text>
+                </View>
+                {/* Client key status badge */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 3,
+                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+                  backgroundColor: wgClientPrivateKey ? '#22c55e15' : '#ef444415',
+                  borderWidth: 1,
+                  borderColor: wgClientPrivateKey ? '#22c55e30' : '#ef444430',
+                }}>
+                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: wgClientPrivateKey ? '#22c55e' : '#ef4444' }} />
+                  <Text style={{ fontSize: 8, fontWeight: '700', color: wgClientPrivateKey ? '#22c55e' : '#ef4444' }}>
+                    {wgClientPrivateKey ? 'CLIENT ✓' : 'CLIENT ✗'}
+                  </Text>
+                </View>
+                <Ionicons name={isWgSectionExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+              </View>
             </TouchableOpacity>
 
             {isWgSectionExpanded && (

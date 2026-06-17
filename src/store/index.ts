@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getFirestore, doc, setDoc, getDoc } from '@react-native-firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc } from '@react-native-firebase/firestore';
 
 export interface RouterConfig {
   id?: string;
@@ -85,6 +85,52 @@ export const loadSavedRoutersFromFirestore = async (userEmail: string): Promise<
   } catch (e) {
     console.error('Failed to load saved routers from Firestore:', e);
     return null;
+  }
+};
+
+/**
+ * Writes a router's FULL config (including WireGuard fields) to the global
+ * 'routers/{id}' Firestore collection. The VPS server reads from this collection
+ * to dynamically discover and proxy router API calls.
+ */
+export const registerRouterToFirestore = async (router: RouterConfig): Promise<void> => {
+  try {
+    if (!router.id) return;
+    const db = getFirestore();
+    const routerDocRef = doc(db, 'routers', router.id);
+    await setDoc(routerDocRef, {
+      id: router.id,
+      name: router.name || router.ip,
+      ip: router.ip,
+      user: router.user,
+      pass: router.pass,
+      vpnIp: router.vpnIp || '',
+      wgClientPrivateKey: router.wgClientPrivateKey || '',
+      wgServerPublicKey: router.wgServerPublicKey || '',
+      wgEndpointHost: router.wgEndpointHost || '',
+      wgEndpointPort: router.wgEndpointPort || '13231',
+      wgClientIp: router.wgClientIp || '10.88.0.2/24',
+      isCloudManaged: router.isCloudManaged || false,
+      registeredAt: new Date().toISOString(),
+    });
+    console.log(`[Firestore] Router "${router.name}" registered to routers/${router.id}`);
+  } catch (e) {
+    console.error('Failed to register router to Firestore:', e);
+  }
+};
+
+/**
+ * Removes a router config from the global 'routers/{id}' Firestore collection.
+ */
+export const deleteRouterFromFirestore = async (routerId: string): Promise<void> => {
+  try {
+    if (!routerId) return;
+    const db = getFirestore();
+    const routerDocRef = doc(db, 'routers', routerId);
+    await deleteDoc(routerDocRef);
+    console.log(`[Firestore] Router ${routerId} removed from routers collection`);
+  } catch (e) {
+    console.error('Failed to delete router from Firestore:', e);
   }
 };
 

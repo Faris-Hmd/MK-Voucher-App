@@ -177,7 +177,7 @@ function AppInner() {
     await saveConfig(targetConfig);
     setActiveRouter(targetConfig);
 
-    // Verify router connectivity (try up to 3 times to account for remote connection establishment)
+    // Verify router connectivity (try up to 3 times to account for VPN tunnel establishment)
     let verifySuccess = false;
     const maxRetries = useVpn ? 3 : 1;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
