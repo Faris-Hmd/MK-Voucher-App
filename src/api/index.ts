@@ -70,7 +70,7 @@ const chunkArray = <T>(array: T[], size: number): T[][] => {
   return chunked;
 };
 
-export const fetchRouterProfilesAPI = async (): Promise<Array<{ id: string; name: string; user: string; pass: string; isCloudManaged: boolean }>> => {
+export const fetchRouterProfilesAPI = async (): Promise<Array<{ id: string; name: string; user: string; pass: string; isCloudManaged: boolean; vpnIp?: string }>> => {
   try {
     const res = await fetch(`${SERVER_URL}/api/routers/profiles`);
     if (!res.ok) return [];
