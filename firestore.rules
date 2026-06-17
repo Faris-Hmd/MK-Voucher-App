@@ -6,5 +6,8 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.token.email == email && request.resource.data.approved == false;
       allow update: if request.auth != null && request.auth.token.email == email && request.resource.data.approved == resource.data.approved;
     }
+    match /routers/{routerId} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
