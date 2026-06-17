@@ -476,6 +476,10 @@ export default function RouterSelectionScreen({
       };
       await registerRouterToFirestore(zeroTouchConfig);
 
+      // Add to local and synced saved routers list
+      const updated = [...savedRouters, zeroTouchConfig];
+      await onUpdateSavedRouters(updated);
+
       // Ask the VPS to establish its own WireGuard tunnel to this router
       try {
         const currentServerUrl = SERVER_URL;
